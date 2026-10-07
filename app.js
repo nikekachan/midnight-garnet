@@ -43,6 +43,8 @@ const S = {
   month: today().slice(0, 7), day: today(),
   events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [],
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
+  syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
+  mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
   calMine: store.get('mg_calMine') === '1', calShift: store.get('mg_calShift') !== '0', weekEdit: null,
   calMode: 'month', freeMode: 3,
   adminToken: null, adminTab: 'tasks', editSlots: null,
@@ -316,9 +318,9 @@ function syncLock() {
 // ---------- メイン画面 ----------
 function render() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span></button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
-  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard }[S.view] || viewCalendar;
+  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
 }
 
@@ -572,9 +574,9 @@ function viewWorks() {
   const singles = S.projects.filter(p => p.type === 'song' && !p.parentId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return `
   <h2 class="page-title">作品</h2>
-  <div class="segtabs">${[['making', '制作中'], ['disco', 'ディスコグラフィ']].map(([k, l]) =>
+  <div class="segtabs three">${[['making', '制作中'], ['disco', 'ディスコグラフィ'], ['sync', '歌詞同期']].map(([k, l]) =>
     `<button class="${S.worksMode === k ? 'on' : ''}" data-act="worksMode" data-m="${k}">${l}</button>`).join('')}</div>
-  ${S.worksMode === 'disco' ? viewDisco() : `
+  ${S.worksMode === 'disco' ? viewDisco() : S.worksMode === 'sync' ? viewSync() : `
   <div class="works-actions">
     <button class="btn ghost sm" data-act="form" data-form="song">＋ 曲を作る</button>
     <button class="btn ghost sm" data-act="form" data-form="album">＋ アルバムを作る</button>
@@ -1651,6 +1653,269 @@ async function doDelete(btn) {
   }, '削除中…');
 }
 
+// ---------- 歌詞同期（完成した曲の歌詞にタイミングを打つ） ----------
+const syncAudio = new Audio(); // 画面を描き直しても再生が止まらないように、DOMの外に置く
+syncAudio.preload = 'auto';
+const fmtCs = s => {
+  if (s == null || isNaN(s)) return '--:--:--';
+  const cs = Math.round(s * 100);
+  return `${pad(Math.floor(cs / 6000))}:${pad(Math.floor(cs / 100) % 60)}:${pad(cs % 100)}`;
+};
+/** 歌詞のステップで提出された歌詞を、空行を除いて1行ずつにする */
+const lyricLinesOf = pid => { const t = lastDone(pid, 'lyrics'); return t ? joinLyrics(subOf(t)).split('\n').map(x => x.trim()).filter(Boolean) : []; };
+const syncSongs = () => S.projects.filter(p => p.type === 'song' && isSongComplete(p.id))
+  .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+/** 提出済みの歌詞と、保存済みのタイミングを合わせる（同じ歌詞の行は時間を引き継ぐ） */
+function buildSyncRows(pid) {
+  const saved = (S.syncSaved[pid] || []);
+  const old = {};
+  saved.forEach(r => { if (r.s != null) (old[r.t] = old[r.t] || []).push(r.s); });
+  return lyricLinesOf(pid).map(t => { const q = old[t]; return { t, s: q && q.length ? q.shift() : null }; });
+}
+async function openSync(pid) {
+  S.syncPid = pid; S.syncRows = null; S.syncCur = 0; render();
+  try {
+    const r = await api('getLyricSync', { projectId: pid });
+    let lines = []; try { lines = JSON.parse((r.sync && r.sync.lines) || '[]'); } catch (e) {}
+    S.syncSaved[pid] = lines;
+  } catch (e) { toast(e.message, 'err'); }
+  if (S.syncPid !== pid) return;
+  S.syncRows = buildSyncRows(pid);
+  const first = S.syncRows.findIndex(r => r.s == null);
+  S.syncCur = first < 0 ? Math.max(S.syncRows.length - 1, 0) : first;
+  render();
+}
+let syncTimer = null;
+function saveSyncSoon() {
+  clearTimeout(syncTimer);
+  const pid = S.syncPid, rows = S.syncRows.map(r => ({ t: r.t, s: r.s }));
+  S.syncSaved[pid] = rows;
+  $('#syncState') && ($('#syncState').textContent = '保存待ち…');
+  syncTimer = setTimeout(async () => {
+    try { await api('saveLyricSync', { projectId: pid, lines: rows }); if ($('#syncState')) $('#syncState').textContent = '保存しました'; }
+    catch (e) { if ($('#syncState')) $('#syncState').textContent = '保存できませんでした'; toast(e.message, 'err'); }
+  }, 1200);
+}
+const syncText = () => (S.syncRows || []).map(r => fmtCs(r.s) + r.t).join('\n');
+function syncLinesHtml() {
+  const rows = S.syncRows || [];
+  if (!rows.length) return '<p class="empty-msg">この曲の歌詞がまだ提出されていません。<br>歌詞のステップで歌詞を提出すると、ここに自動で入ります。</p>';
+  const t = syncAudio.currentTime;
+  let playing = -1;
+  rows.forEach((r, i) => { if (r.s != null && r.s <= t + 0.001 && (playing < 0 || r.s >= rows[playing].s)) playing = i; });
+  return rows.map((r, i) => `<li class="${i === S.syncCur ? 'cur' : ''} ${r.s != null ? 'has' : ''} ${i === playing && !syncAudio.paused ? 'playing' : ''}" data-i="${i}">
+    <button type="button" class="ly-t" data-act="syncSeek" data-i="${i}">${fmtCs(r.s)}</button>
+    <span class="ly-txt" data-act="syncCur" data-i="${i}">${esc(r.t)}</span>
+    <span class="ly-ops"><button type="button" data-act="syncNudge" data-i="${i}" data-d="-0.1">−.1</button><button type="button" data-act="syncNudge" data-i="${i}" data-d="0.1">+.1</button><button type="button" data-act="syncNudge" data-i="${i}" data-d="x">×</button></span>
+  </li>`).join('');
+}
+function refreshSyncParts(scroll) {
+  const ol = $('#syncLines'); if (!ol) return;
+  ol.innerHTML = syncLinesHtml();
+  const out = $('#syncOut'); if (out) out.value = syncText();
+  const rows = S.syncRows || [];
+  const pr = $('#syncProg'); if (pr) pr.textContent = rows.length ? `${rows.filter(r => r.s != null).length} / ${rows.length} 行 記録済み` : '';
+  if (scroll) { const el = $('#syncLines li.cur'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+function syncTap() {
+  const rows = S.syncRows; if (!rows || !rows.length) return;
+  rows[S.syncCur].s = Math.round(syncAudio.currentTime * 100) / 100;
+  if (S.syncCur < rows.length - 1) S.syncCur++;
+  refreshSyncParts(true); saveSyncSoon();
+}
+function syncUndo() {
+  const rows = S.syncRows; if (!rows || !rows.length) return;
+  if (rows[S.syncCur].s == null && S.syncCur > 0) S.syncCur--;
+  rows[S.syncCur].s = null;
+  refreshSyncParts(true); saveSyncSoon();
+}
+function viewSync() {
+  if (!S.syncPid) {
+    const list = syncSongs();
+    return `<p class="muted small" style="margin:0 2px 12px">ステップがすべて完了した曲が、ここに自動で並びます。提出された歌詞が入っているので、音源を読み込んでタイミングを打つだけです。</p>
+    ${list.length ? list.map(p => {
+      const n = lyricLinesOf(p.id).length;
+      const album = p.parentId ? proj(p.parentId) : null;
+      return `<button class="pcard" data-act="syncOpen" data-id="${esc(p.id)}">
+        <div class="kind">${album ? '💿 ' + esc(album.name) : 'SONG'}</div>
+        <div class="pname">${esc(p.name)}</div>
+        <div class="pmeta"><span>${n ? `歌詞 ${n}行` : '歌詞がまだありません'}</span><b>同期する ›</b></div>
+      </button>`;
+    }).join('') : '<p class="empty-msg">完成した曲はまだありません。<br>曲のステップがすべて完了すると、ここにタイトルが入ります。</p>'}`;
+  }
+  const p = proj(S.syncPid);
+  if (!S.syncRows) return `<button class="btn ghost sm" data-act="syncBack">← 曲の一覧</button><p class="empty-msg">読み込み中…</p>`;
+  return `<button class="btn ghost sm" data-act="syncBack" style="width:auto">← 曲の一覧</button>
+  <h3 class="sync-title">${esc(p ? p.name : '')}</h3>
+  <div class="sync-bar">
+    <label class="btn ghost sm sync-file">${S.syncFile ? '♪ ' + esc(S.syncFile) : '♪ 音源を読み込む（この端末だけ）'}<input type="file" accept="audio/*,video/*" data-change="syncFile" hidden></label>
+    <input type="range" id="syncSeek" min="0" max="${syncAudio.duration || 0}" step="0.01" value="${syncAudio.currentTime}" aria-label="再生位置">
+    <div class="sync-ctl">
+      <button type="button" class="btn ghost sm" data-act="syncPlay">${syncAudio.paused ? '▶' : '❚❚'}</button>
+      <button type="button" class="btn ghost sm" data-act="syncJump" data-d="-3">−3秒</button>
+      <button type="button" class="btn ghost sm" data-act="syncJump" data-d="3">+3秒</button>
+      <select id="syncRate" aria-label="再生速度">${[0.5, 0.75, 1, 1.25].map(v => `<option value="${v}" ${syncAudio.playbackRate === v ? 'selected' : ''}>${v}倍</option>`).join('')}</select>
+      <span class="sync-clock" id="syncClock">${fmtCs(syncAudio.currentTime)}</span>
+    </div>
+    <button type="button" class="btn gem sync-tap" data-act="syncTap">記録（タップ / Space）</button>
+  </div>
+  <div class="sync-foot"><button type="button" class="btn ghost sm" data-act="syncUndo">1行戻す</button><button type="button" class="btn ghost sm" data-act="syncClear">全部の時間を消す</button><span class="muted small" id="syncProg"></span><span class="muted small" id="syncState"></span></div>
+  <ol class="sync-lines" id="syncLines">${syncLinesHtml()}</ol>
+  <p class="hint">行を押すとその行から記録 ・ 時間を押すとその位置から再生 ・ ±で0.1秒ずつ調整。タイミングは自動で保存され、3人で共有されます（音源は保存されません）。</p>
+  <h3 class="sec">できたテキスト</h3>
+  <textarea id="syncOut" class="sync-out" readonly>${esc(syncText())}</textarea>
+  <button class="btn gem sm" data-act="syncCopy">テキストをコピー</button>`;
+}
+(function syncTick() {
+  if (S.view === 'works' && S.worksMode === 'sync' && S.syncPid) {
+    const c = $('#syncClock'); if (c) c.textContent = fmtCs(syncAudio.currentTime);
+    const sk = $('#syncSeek'); if (sk && document.activeElement !== sk) { sk.max = syncAudio.duration || 0; sk.value = syncAudio.currentTime; }
+    if (!syncAudio.paused) {
+      const rows = S.syncRows || []; let idx = -1; const t = syncAudio.currentTime;
+      rows.forEach((r, i) => { if (r.s != null && r.s <= t + 0.001 && (idx < 0 || r.s >= rows[idx].s)) idx = i; });
+      $$('#syncLines li').forEach(li => li.classList.toggle('playing', Number(li.dataset.i) === idx));
+    }
+  }
+  requestAnimationFrame(syncTick);
+})();
+['play', 'pause'].forEach(ev => syncAudio.addEventListener(ev, () => { const b = $('[data-act=syncPlay]'); if (b) b.textContent = syncAudio.paused ? '▶' : '❚❚'; }));
+
+// ---------- 目標マンダラチャート（9×9・3人の目標つき） ----------
+const MD_POS = [0, 1, 2, 3, 5, 6, 7, 8];
+const MD_ST = ['未着手', '進行中', '達成'];
+const MD_HUES = ['#FF7A70', '#FFB052', '#E3CF3A', '#5ACB84', '#4FC3E3', '#7E95FF', '#BF85F2', '#F27AB9'];
+const mdDef = key => key === 'meta' ? { name: '', period: '', goal: '' } : key[0] === 't' ? { label: '', color: Number(key.slice(1)) } : { text: '', st: 0 };
+const mdGet = key => Object.assign(mdDef(key), S.mandala[key] || {});
+const mdTheme = t => mdGet('t' + t), mdItem = (t, j) => mdGet(`i${t}-${j}`), mdSub = (t, j, k) => mdGet(`s${t}-${j}-${k}`);
+const mdMem = k => S.members[k] || { id: '', name: `メンバー${k + 1}`, color: '#888' };
+const mdHue = t => MD_HUES[mdTheme(t).color] || MD_HUES[0];
+const mdPending = {}; let mdTimer = null;
+async function loadMandala() {
+  try { const r = await api('getMandala'); S.mandala = r.cells || {}; S.mandalaLoaded = true; }
+  catch (e) { toast(e.message, 'err'); }
+  if (S.view === 'mandala' && !mdTyping()) render();
+}
+const mdTyping = () => { const a = document.activeElement; return !!(a && a.dataset && a.dataset.mdk); };
+function mdWrite(key, patch, delay = 800) {
+  S.mandala[key] = Object.assign(mdGet(key), patch, { by: S.me.id, at: Date.now() });
+  mdPending[key] = S.mandala[key];
+  clearTimeout(mdTimer);
+  mdTimer = setTimeout(async () => {
+    const cells = Object.assign({}, mdPending); Object.keys(cells).forEach(k => delete mdPending[k]);
+    try { const r = await api('saveMandala', { cells }); if (!mdTyping() && !Object.keys(mdPending).length) { S.mandala = r.cells || S.mandala; } }
+    catch (e) { Object.assign(mdPending, cells); toast('保存できませんでした：' + e.message, 'err'); }
+  }, delay);
+}
+function mdCell(b, c) {
+  if (b === 4) {
+    if (c === 4) return { kind: 'goal', text: mdGet('meta').goal, ph: '中心の目標' };
+    const t = MD_POS.indexOf(c); return { kind: 'theme', t, text: mdTheme(t).label, ph: `テーマ${t + 1}` };
+  }
+  const t = MD_POS.indexOf(b);
+  if (c === 4) return { kind: 'theme', t, text: mdTheme(t).label, ph: `テーマ${t + 1}` };
+  const j = MD_POS.indexOf(c), it = mdItem(t, j);
+  return { kind: 'item', t, j, text: it.text, st: it.st, ph: '行動' };
+}
+const mdTrio = (t, j) => [0, 1, 2].map(k => { const s = mdSub(t, j, k); return `<i class="${s.st === 2 ? 'done' : s.text ? 'on' : ''}" style="--mc:${mdMem(k).color}"></i>`; }).join('');
+function mdBoardHtml() {
+  let h = '';
+  for (let b = 0; b < 9; b++) {
+    h += `<div class="md-block ${b === S.mdSel ? 'sel' : ''}">`;
+    for (let c = 0; c < 9; c++) {
+      const i = mdCell(b, c);
+      const col = i.t !== undefined ? `--c:${mdHue(i.t)}` : '';
+      const on = i.kind === 'item' && b === S.mdSel && i.j === S.mdItem ? ' sel-item' : '';
+      h += `<button class="md-cell ${i.kind}${i.text ? '' : ' empty'}${on}" style="${col}" data-act="mdCell" data-b="${b}" data-c="${c}" ${i.kind === 'item' ? `data-st="${i.st}"` : ''}><span class="txt">${esc(i.text || '·')}</span>${i.kind === 'item' ? `<span class="trio">${mdTrio(i.t, i.j)}</span>` : ''}</button>`;
+    }
+    h += '</div>';
+  }
+  return h;
+}
+function mdProgress() {
+  let d = 0; for (let t = 0; t < 8; t++) for (let j = 0; j < 8; j++) if (mdItem(t, j).st === 2) d++;
+  return d;
+}
+const mdField = (key, f, ph) => `<textarea data-mdk="${key}" data-mdf="${f}" placeholder="${esc(ph)}" rows="3">${esc(mdGet(key)[f] || '')}</textarea>`;
+const mdStBtn = (key, color) => { const s = mdGet(key).st; return `<button type="button" class="md-st" data-act="mdSt" data-key="${key}" data-st="${s}" style="--c:${color}"><i></i>${MD_ST[s]}</button>`; };
+const mdBy = key => { const o = S.mandala[key]; return o && o.at ? `<span class="md-by">${o.by ? `<b style="color:${mem(o.by).color}">${esc(mem(o.by).name)}</b> が編集 · ` : ''}${timeLabel(new Date(o.at).toISOString())}</span>` : ''; };
+function mdEditorHtml() {
+  const b = S.mdSel, isCenter = b === 4, t = isCenter ? null : MD_POS.indexOf(b), th = t !== null ? mdTheme(t) : null;
+  let h = `<div class="md-ed-head"><div><div class="kind">${isCenter ? '中心ブロック · 目標とテーマ' : `テーマ ${t + 1} · 具体的な行動`}</div>
+    <h3>${esc(isCenter ? (mdGet('meta').goal || '目標を書きましょう') : (th.label || `テーマ${t + 1}`))}</h3></div>
+    <div class="md-mini">${Array.from({ length: 9 }, (_, k) => `<button type="button" class="${k === b ? 'on' : ''}" data-act="mdGo" data-b="${k}" aria-label="ブロック${k + 1}"></button>`).join('')}</div></div>`;
+  if (th) h += `<div class="md-sw"><span>テーマの色</span>${MD_HUES.map((c, k) => `<button type="button" class="${th.color === k ? 'on' : ''}" style="--c:${c}" data-act="mdColor" data-k="${k}" aria-label="色${k + 1}"></button>`).join('')}</div>`;
+  h += '<div class="md-fgrid">';
+  for (let c = 0; c < 9; c++) {
+    const i = mdCell(b, c);
+    const col = i.t !== undefined ? `--c:${mdHue(i.t)}` : '';
+    if (i.kind === 'goal') h += `<div class="md-f goal">${mdField('meta', 'goal', '中心の目標')}</div>`;
+    else if (i.kind === 'theme') h += `<div class="md-f theme" style="${col}">${mdField('t' + i.t, 'label', i.ph)}${isCenter ? `<button type="button" class="md-st" data-act="mdGo" data-b="${c}">開く →</button>` : ''}</div>`;
+    else {
+      const k = `i${i.t}-${i.j}`;
+      h += `<div class="md-f item ${i.j === S.mdItem ? 'open' : ''}" style="${col}">${mdField(k, 'text', '行動')}<button type="button" class="md-trio" data-act="mdItem" data-j="${i.j}" aria-label="3人の目標を開く">${mdTrio(i.t, i.j)}</button>${mdStBtn(k, mdHue(i.t))}</div>`;
+    }
+  }
+  h += '</div>';
+  if (!isCenter && S.mdItem !== null) {
+    const j = S.mdItem, it = mdItem(t, j);
+    h += `<div class="md-detail"><div class="md-ed-head"><div style="min-width:0"><div class="kind">${esc(th.label || `テーマ${t + 1}`)} › 行動</div><h3>${esc(it.text || '（行動が未入力です）')}</h3>${mdBy(`i${t}-${j}`)}</div><button type="button" class="btn ghost sm" style="width:auto" data-act="mdItem" data-j="${j}">閉じる</button></div>
+      <div class="md-cards">${[0, 1, 2].map(k => {
+        const m = mdMem(k), key = `s${t}-${j}-${k}`, mine = m.id === S.me.id;
+        return `<div class="md-card ${mine ? 'mine' : ''}" style="--mc:${m.color}"><div class="md-mh"><i></i><span>${esc(m.name)}</span>${mine ? '<em>あなた</em>' : ''}</div>${mdField(key, 'text', `${m.name}の具体的な目標`)}${mdStBtn(key, m.color)}${mdBy(key)}</div>`;
+      }).join('')}</div></div>`;
+  }
+  h += `<div class="md-nav"><button type="button" class="btn ghost sm" data-act="mdStep" data-d="-1">← 前</button>${!isCenter ? '<button type="button" class="btn ghost sm" data-act="mdGo" data-b="4">中心へ</button>' : ''}<button type="button" class="btn ghost sm" data-act="mdStep" data-d="1">次 →</button></div>`;
+  return h;
+}
+function viewMandala() {
+  if (!S.mandalaLoaded) { setTimeout(loadMandala, 0); return '<h2 class="page-title">目標マンダラ</h2><p class="empty-msg">読み込み中…</p>'; }
+  const meta = mdGet('meta'), d = mdProgress();
+  const recent = Object.entries(S.mandala).filter(([, v]) => v && v.at).sort((a, b) => b[1].at - a[1].at).slice(0, 8);
+  return `<h2 class="page-title">目標マンダラ</h2>
+  <div class="md-head">
+    <input class="md-name" data-mdk="meta" data-mdf="name" value="${esc(meta.name)}" placeholder="チャートの名前（例：Midnight Garnet 2027）">
+    <label class="md-period">期間<input data-mdk="meta" data-mdf="period" value="${esc(meta.period)}" placeholder="例：2026年10月〜2027年9月"></label>
+    <div class="md-prog"><b id="mdNum">${d}</b><small> / 64 達成</small><div class="bar"><i id="mdBar" style="width:${d / 64 * 100}%"></i></div></div>
+    <div class="legend">${[0, 1, 2].map(k => `<span><i style="--c:${mdMem(k).color}"></i>${esc(mdMem(k).name)}</span>`).join('')}</div>
+  </div>
+  <div class="md-board" id="mdBoard">${mdBoardHtml()}</div>
+  <p class="hint" style="margin:8px 2px 14px">行動のマスの下の3つの四角が、3人それぞれの目標です（書くと薄く色が付き、達成すると塗りつぶし）。マスを押すと下で編集できます。</p>
+  <div class="panel md-editor" id="mdEditor">${mdEditorHtml()}</div>
+  <div class="panel"><h3>最近の編集</h3>${recent.length ? `<ul class="md-act">${recent.map(([k, v]) => `<li><span>${v.by ? `<b style="color:${mem(v.by).color}">${esc(mem(v.by).name)}</b> · ` : ''}${esc(mdPlace(k))}</span><time>${timeLabel(new Date(v.at).toISOString())}</time></li>`).join('')}</ul>` : '<p class="muted small">まだ編集の記録はありません</p>'}</div>`;
+}
+function mdPlace(key) {
+  if (key === 'meta') return 'チャートの名前・目標';
+  const n = key.slice(1).split('-').map(Number), tl = t => mdTheme(t).label || `テーマ${t + 1}`;
+  if (key[0] === 't') return `テーマ「${tl(n[0])}」`;
+  if (key[0] === 'i') return `${tl(n[0])} › ${mdItem(n[0], n[1]).text || '行動'}`;
+  return `${tl(n[0])} › ${mdItem(n[0], n[1]).text || '行動'} › ${mdMem(n[2]).name}の目標`;
+}
+function mdRefresh(editor = true) {
+  const bd = $('#mdBoard'); if (bd) bd.innerHTML = mdBoardHtml();
+  const d = mdProgress(); if ($('#mdNum')) { $('#mdNum').textContent = d; $('#mdBar').style.width = (d / 64 * 100) + '%'; }
+  if (editor && $('#mdEditor')) $('#mdEditor').innerHTML = mdEditorHtml();
+}
+function mdSelect(b, j) {
+  S.mdSel = b; S.mdItem = b !== 4 && j !== undefined ? j : null; mdRefresh();
+  const el = S.mdItem !== null ? $('.md-detail') : $('#mdEditor'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+document.addEventListener('input', e => {
+  const el = e.target; if (!el.dataset || !el.dataset.mdk) return;
+  mdWrite(el.dataset.mdk, { [el.dataset.mdf]: el.value });
+  mdRefresh(false);
+});
+document.addEventListener('input', e => { if (e.target.id === 'syncSeek') syncAudio.currentTime = Number(e.target.value); });
+document.addEventListener('keydown', e => {
+  if (!(S.view === 'works' && S.worksMode === 'sync' && S.syncRows)) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['textarea', 'input', 'select'].includes(tag) || !$('#sheetWrap').hidden) return;
+  if (e.code === 'Space') { e.preventDefault(); syncTap(); }
+  else if (e.key === 'Backspace') { e.preventDefault(); syncUndo(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); S.syncCur = Math.min(S.syncCur + 1, S.syncRows.length - 1); refreshSyncParts(true); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); S.syncCur = Math.max(S.syncCur - 1, 0); refreshSyncParts(true); }
+});
+setInterval(() => { if (S.view === 'mandala' && document.visibilityState === 'visible' && !mdTyping() && !Object.keys(mdPending).length && S.me) loadMandala(); }, 20000);
+
 // ---------- 掲示板・メモ ----------
 function viewBoard() {
   const list = S.memos.slice().sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
@@ -1698,7 +1963,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -1961,6 +2226,30 @@ document.addEventListener('click', e => {
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
     case 'worksMode': S.worksMode = el.dataset.m; render(); break;
+    case 'syncOpen': openSync(el.dataset.id); break;
+    case 'syncBack': S.syncPid = null; S.syncRows = null; syncAudio.pause(); render(); break;
+    case 'syncTap': syncTap(); break;
+    case 'syncUndo': syncUndo(); break;
+    case 'syncPlay': if (!syncAudio.src) { toast('先に音源を読み込んでください', 'err'); break; } syncAudio.paused ? syncAudio.play().catch(() => {}) : syncAudio.pause(); break;
+    case 'syncJump': syncAudio.currentTime = Math.max(0, syncAudio.currentTime + Number(el.dataset.d)); break;
+    case 'syncCur': S.syncCur = Number(el.dataset.i); refreshSyncParts(false); break;
+    case 'syncSeek': { const r = S.syncRows[Number(el.dataset.i)]; S.syncCur = Number(el.dataset.i); if (r.s != null && syncAudio.src) { syncAudio.currentTime = r.s; syncAudio.play().catch(() => {}); } refreshSyncParts(false); break; }
+    case 'syncNudge': {
+      const i = Number(el.dataset.i), r = S.syncRows[i], d = el.dataset.d;
+      if (d === 'x') r.s = null; else if (r.s != null) r.s = Math.max(0, Math.round((r.s + Number(d)) * 100) / 100);
+      S.syncCur = i; refreshSyncParts(false); saveSyncSoon(); break;
+    }
+    case 'syncClear':
+      if (el.dataset.armed) { S.syncRows.forEach(r => { r.s = null; }); S.syncCur = 0; refreshSyncParts(true); saveSyncSoon(); delete el.dataset.armed; el.textContent = '全部の時間を消す'; }
+      else { el.dataset.armed = '1'; el.textContent = 'もう一度押すと消えます'; setTimeout(() => { delete el.dataset.armed; el.textContent = '全部の時間を消す'; }, 3000); }
+      break;
+    case 'syncCopy': copyText(syncText(), 'テキストをコピーしました'); break;
+    case 'mdCell': { const b = Number(el.dataset.b), c = Number(el.dataset.c); if (b !== 4 && c !== 4) mdSelect(b, MD_POS.indexOf(c)); else mdSelect(b); break; }
+    case 'mdGo': mdSelect(Number(el.dataset.b)); break;
+    case 'mdStep': mdSelect((S.mdSel + Number(el.dataset.d) + 9) % 9); break;
+    case 'mdItem': { const j = Number(el.dataset.j); mdSelect(S.mdSel, S.mdItem === j ? undefined : j); break; }
+    case 'mdColor': mdWrite('t' + MD_POS.indexOf(S.mdSel), { color: Number(el.dataset.k) }, 0); mdRefresh(); break;
+    case 'mdSt': { const k = el.dataset.key, s2 = (mdGet(k).st + 1) % 3; mdWrite(k, { st: s2 }, 0); mdRefresh(); if (s2 === 2) toast('達成！ 💫'); break; }
     case 'relOpen': openSheet(FORMS.releaseView(null, { id: el.dataset.id })); break;
     case 'minMonth': { const d = parseYmd(S.minMonth + '-01'); d.setMonth(d.getMonth() + Number(el.dataset.d)); S.minMonth = ymd(d).slice(0, 7); render(); break; }
     case 'minCopy': { const x = S.events.find(e => e.id === el.dataset.id); if (x) copyText(`${x.title}（${md(x.date)}）\n\n■議題\n${x.agenda || ''}\n\n■議事録\n${x.minutes}`, '議事録をコピーしました'); break; }
@@ -1989,6 +2278,12 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('[data-change=syncFile]')) {
+    const file = e.target.files[0]; if (!file) return;
+    if (syncAudio.src) URL.revokeObjectURL(syncAudio.src);
+    syncAudio.src = URL.createObjectURL(file); S.syncFile = file.name; render();
+  }
+  if (e.target.id === 'syncRate') syncAudio.playbackRate = Number(e.target.value);
   if (e.target.matches('form[data-form=event] input[name=kind]')) {
     e.target.closest('form').dataset.kind = e.target.value;
   }
