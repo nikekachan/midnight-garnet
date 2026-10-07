@@ -1514,12 +1514,15 @@ function initPush() {
     try {
       // GitHub Pages（https://ユーザー名.github.io/リポジトリ名/）でも動くように、サイトの置き場所に合わせる
       const base = location.pathname.replace(/[^/]*$/, '');
-      await OneSignal.init({
+      S.osErr = '初期化中';
+      const ready = OneSignal.init({
         appId: CFG.ONESIGNAL_APP_ID,
         serviceWorkerPath: base.replace(/^\//, '') + 'OneSignalSDKWorker.js',
         serviceWorkerParam: { scope: base },
       });
-      S.os = OneSignal; S.osErr = '';
+      // iPhoneで init が終わらないことがあるため、10秒待っても終わらなければ先へ進む
+      const timedOut = await Promise.race([ready.then(() => false), new Promise(r => setTimeout(() => r(true), 10000))]);
+      S.os = OneSignal; S.osErr = timedOut ? '初期化が10秒で終わらず' : '';
       linkPush();
       OneSignal.Notifications.addEventListener('permissionChange', () => { if (S.view === 'settings') render(); });
       OneSignal.User.PushSubscription.addEventListener('change', () => { if (S.view === 'settings') render(); });
@@ -1560,7 +1563,7 @@ function pushDiag() {
   return [
     isStandalone() ? 'アプリ' : 'ブラウザ',
     'permission=' + ('Notification' in window ? Notification.permission : 'なし'),
-    'SDK=' + (S.os ? 'OK' : '未読込（' + (S.osErr || '?') + '）'),
+    'SDK=' + (S.os ? 'OK' : '未読込') + (S.osErr ? '（' + S.osErr + '）' : ''),
     'optedIn=' + (ps ? ps.optedIn : '-'),
     'token=' + (ps && ps.token ? 'あり' : 'なし'),
     'SW=' + ('serviceWorker' in navigator ? 'OK' : 'なし'),
