@@ -470,3 +470,60 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:7px;tra
 .cell .more{font-size:9px;color:var(--muted);font-style:normal;text-align:center;line-height:12px}
 .chip-legend{margin-top:-4px}
 .chip-legend .chip{display:inline-block;min-width:44px}
+
+/* ヘッダーの掲示板ボタン */
+#meChip{display:flex;align-items:center;gap:6px}
+.hd-btn{display:flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid var(--line);border-radius:99px;font-size:12px;background:var(--surface);white-space:nowrap}
+.hd-btn.on{border-color:rgba(224,17,95,.6);background:rgba(155,17,30,.25)}
+
+/* カレンダーの表示切り替え */
+.cal-filters{display:flex;gap:8px;margin:0 2px 10px;flex-wrap:wrap}
+.tg{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:12px;color:var(--muted)}
+.tg i{width:26px;height:15px;border-radius:99px;background:rgba(255,255,255,.14);position:relative;transition:background .2s}
+.tg i::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;transition:transform .2s}
+.tg.on{color:var(--text);border-color:rgba(224,17,95,.5)}
+.tg.on i{background:var(--garnet-hi)}
+.tg.on i::after{transform:translateX(11px)}
+
+/* 3人の空き時間（1週間） */
+.wk{display:grid;grid-template-columns:34px repeat(7,minmax(0,1fr));column-gap:3px}
+.wk-t{font-size:9px;color:var(--muted);height:12px;line-height:12px;transform:translateY(-6px);font-variant-numeric:tabular-nums}
+.wk-h{display:flex;flex-direction:column;align-items:center;padding:4px 0 6px;border-radius:8px;font-size:11px;line-height:1.2}
+.wk-h small{font-size:9px;color:var(--muted)}
+.wk-h.sun b{color:#ff6b6b} .wk-h.sat b{color:#6b9bff}
+.wk-h.today b{background:#fff;color:#000;border-radius:99px;padding:0 5px}
+.wk-h.sel{background:rgba(155,17,30,.28)}
+.wk-c{display:flex;gap:1px;height:12px;padding:0 1px;border-bottom:1px solid rgba(255,255,255,.035)}
+.wk-c.hour{border-top:1px solid rgba(255,255,255,.07)}
+.wk-c i{flex:1;background:rgba(255,255,255,.04)}
+.wk-c i.s-ok{background:var(--c);opacity:.85}
+.wk-c i.s-ng{background:repeating-linear-gradient(135deg,rgba(255,77,94,.45) 0 2px,transparent 2px 4px)}
+.wk-c i.s-shift{background:rgba(255,196,107,.5)}
+.wk-c.hit{box-shadow:inset 0 0 0 1.5px var(--garnet-hi);border-radius:2px}
+.tl-legend .hit{background:transparent;box-shadow:inset 0 0 0 1.5px var(--garnet-hi)}
+
+/* 空き時間の入力（1週間） */
+.wk-nav{margin:0 0 10px}
+.wk-nav h2{font-size:18px}
+.wgrid{display:grid;grid-template-columns:36px repeat(7,minmax(0,1fr));column-gap:2px;border-radius:12px;border:1px solid var(--line);padding:4px 4px 6px;touch-action:none;user-select:none;-webkit-user-select:none;margin-bottom:12px;background:var(--surface)}
+.wt{font-size:9px;color:var(--muted);height:14px;line-height:14px;transform:translateY(-7px);font-variant-numeric:tabular-nums}
+.wh{display:flex;flex-direction:column;align-items:center;padding:4px 0;border-radius:8px;font-size:11px;line-height:1.2;background:rgba(255,255,255,.04);margin-bottom:4px}
+.wh small{font-size:9px;color:var(--muted)}
+.wh.sun b{color:#ff6b6b} .wh.sat b{color:#6b9bff}
+.wc{height:14px;border-bottom:1px solid rgba(0,0,0,.25)}
+.wc.hour{border-top:1px solid rgba(255,255,255,.06)}
+.wc.s-u{background:rgba(255,255,255,.05)}
+.wc.s-ok{background:var(--ok)}
+.wc.s-ng{background:#ff7a8a}
+.wc.s-shift{background:repeating-linear-gradient(135deg,rgba(255,196,107,.85) 0 3px,rgba(255,196,107,.55) 3px 6px)}
+
+/* 掲示板・メモ */
+.memos{display:grid;gap:10px;margin-top:12px}
+.memo{padding:12px 14px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--c)}
+.memo-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.memo-title{font-size:15px;min-width:0;overflow-wrap:anywhere}
+.memo-body{margin:0;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--line);font-family:inherit;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;user-select:text;-webkit-user-select:text}
+.memo-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;flex-wrap:wrap}
+.memo-btns{display:flex;gap:6px;flex-wrap:wrap}
+.memo-btns .btn{width:auto;margin:0}
+@media (max-width:420px){.hd-btn span{display:none}.hd-btn{padding:6px 9px}}

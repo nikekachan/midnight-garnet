@@ -41,7 +41,8 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [],
+  calMine: store.get('mg_calMine') === '1', calShift: store.get('mg_calShift') !== '0', weekEdit: null,
   calMode: 'month', freeMode: 3,
   adminToken: null, adminTab: 'tasks', editSlots: null,
   detail: null, projStack: [], poll: null, os: null,
@@ -221,7 +222,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -314,9 +315,9 @@ function syncLock() {
 // ---------- メイン画面 ----------
 function render() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
-  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings }[S.view] || viewCalendar;
+  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
 }
 
@@ -358,6 +359,11 @@ function commonRanges(date, mode) {
   return out.map(r => Object.assign(r, { from: slotTime(r.start), to: slotTime(r.end), mins: (r.end - r.start) * 30 }));
 }
 const eventsOn = date => S.events.filter(e => e.date === date).sort((a, b) => a.start.localeCompare(b.start));
+/** その日を含む週の月曜日 */
+const weekStart = date => addDays(date, -((parseYmd(date).getDay() + 6) % 7));
+const weekDays = date => { const s0 = weekStart(date); return [0, 1, 2, 3, 4, 5, 6].map(k => addDays(s0, k)); };
+const mdShort = ds => { const d = parseYmd(ds); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const isMyEvent = e => splitIds(e.participants).includes(S.me.id) || e.createdBy === S.me.id;
 
 function viewCalendar() {
   return `
@@ -385,7 +391,7 @@ function viewMonth() {
   const startPad = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 月曜はじまり
   const days = new Date(y, m, 0).getDate();
   const byDay = {};
-  S.tasks.forEach(t => { (byDay[t.deadline] = byDay[t.deadline] || []).push(t); });
+  S.tasks.forEach(t => { if (!S.calMine || isMine(t)) (byDay[t.deadline] = byDay[t.deadline] || []).push(t); });
 
   let cells = '';
   for (let i = 0; i < startPad; i++) cells += '<div class="cell pad"></div>';
@@ -399,7 +405,7 @@ function viewMonth() {
   const tail = (7 - (startPad + days) % 7) % 7;
   for (let i = 0; i < tail; i++) cells += '<div class="cell pad"></div>';
   const dayList = (byDay[S.day] || []).slice().sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1));
-  const evs = eventsOn(S.day);
+  const evs = eventsOn(S.day).filter(e => !S.calMine || isMyEvent(e));
   const isThisMonth = S.month === today().slice(0, 7);
 
   return `
@@ -410,6 +416,10 @@ function viewMonth() {
     <button class="icon-btn" data-act="month" data-d="1" aria-label="次の月">›</button>
   </div>
   <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
+  <div class="cal-filters">
+    <button class="tg ${S.calMine ? 'on' : ''}" data-act="calMine"><i></i>自分の予定だけ</button>
+    <button class="tg ${S.calShift ? 'on' : ''}" data-act="calShift"><i></i>シフトを表示</button>
+  </div>
   <div class="legend chip-legend"><span><b class="chip ev" style="--g:#6b5d63">予定</b></span><span><b class="chip sh" style="--c:#6b5d63">シフト</b></span><span><b class="chip tk" style="--c:#6b5d63">タスク</b></span></div>
   <div class="cal">${[1, 2, 3, 4, 5, 6, 0].map(i => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${WD[i]}</div>`).join('')}${cells}</div>
 
@@ -417,10 +427,10 @@ function viewMonth() {
     <h3>${md(S.day)}</h3>
     <div class="day-btns">
       <button class="btn gem sm" data-act="form" data-form="event" data-date="${S.day}">＋ 予定</button>
-      <button class="btn ghost sm" data-act="availEdit" data-date="${S.day}">空き時間を入力</button>
+      <button class="btn ghost sm" data-act="availEdit" data-date="${S.day}">空き時間を入力（週）</button>
     </div>
   </div>
-  <h3 class="sec">予定</h3>
+  <h3 class="sec">予定${S.calMine ? '（自分だけ）' : ''}</h3>
   ${evs.length ? evs.map(eventCard).join('') : '<p class="empty-msg">この日の予定はありません</p>'}
   <h3 class="sec">メンバーの状況</h3>
   <div class="status-list">${S.members.map(mm => memberDay(mm, S.day)).join('')}</div>
@@ -430,10 +440,11 @@ function viewMonth() {
 
 // カレンダーのマスに出すラベル（予定 → シフト → タスクの順）
 function dayChips(ds, tasks) {
-  const out = eventsOn(ds).map(e =>
+  const out = eventsOn(ds).filter(e => !S.calMine || isMyEvent(e)).map(e =>
     `<b class="chip ev" style="${colorVars(splitIds(e.participants))}">${esc(e.title)}</b>`);
   const prev = addDays(ds, -1);
   S.members.forEach(mm => {
+    if (!S.calShift || (S.calMine && mm.id !== S.me.id)) return;
     shiftsOn(mm.id, ds).forEach(x => {
       // 日をまたぐシフトの2日目（00:00〜）は「明け」と表示
       const ake = x.start === '00:00' && shiftsOn(mm.id, prev).some(p => p.end === '24:00');
@@ -473,47 +484,50 @@ function eventCard(e) {
 }
 
 function viewFree() {
-  const date = S.day;
   const mode = S.freeMode;
-  const cols = S.members.map(m => ({ m, s: stateArr(m.id, date) }));
-  let grid = '';
+  const week = weekDays(S.day);
+  const cols = week.map(d => ({ d, st: S.members.map(m => ({ m, s: stateArr(m.id, d) })) }));
+  let grid = `<div class="wk-t"></div>${week.map(d => {
+    const wd = parseYmd(d).getDay();
+    return `<button class="wk-h ${d === S.day ? 'sel' : ''} ${d === today() ? 'today' : ''} ${wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''}" data-act="day" data-day="${d}"><b>${mdShort(d)}</b><small>${WD[wd]}</small></button>`;
+  }).join('')}`;
   for (let i = SLOT0; i < 48; i++) {
-    const who = cols.filter(c => c.s[i] === 'ok').length;
-    const hit = mode === 3 ? who === cols.length : who >= 2;
-    grid += `<div class="tl-t">${i % 2 === 0 ? slotTime(i) : ''}</div>`
-      + cols.map(c => `<div class="tl-c s-${c.s[i]}" style="--c:${c.m.color}"></div>`).join('')
-      + `<div class="tl-c tl-common ${hit ? 'hit' : ''}"></div>`;
+    grid += `<div class="wk-t">${i % 2 === 0 ? slotTime(i) : ''}</div>`;
+    grid += cols.map(c => {
+      const who = c.st.filter(x => x.s[i] === 'ok').length;
+      const hit = mode === 3 ? who === c.st.length : who >= 2;
+      return `<div class="wk-c ${hit ? 'hit' : ''} ${i % 2 === 0 ? 'hour' : ''}">${c.st.map(x => `<i class="s-${x.s[i]}" style="--c:${x.m.color}"></i>`).join('')}</div>`;
+    }).join('');
   }
-  const ranges = commonRanges(date, mode);
+  const rangeBtn = (r, d) => `<button class="range" data-act="form" data-form="event" data-date="${d}" data-start="${r.from}" data-end="${r.to}" data-who="${r.key}">
+      <span class="r-time"><small>${md(d)}</small>${r.from}〜${r.to}</span>
+      <span class="r-who">${mode === 3 ? '3人そろう' : whoChips(r.who)}</span>
+      <span class="r-go">予定を入れる ›</span></button>`;
+  const weekRanges = [];
+  week.forEach(d => commonRanges(d, mode).forEach(r => weekRanges.push(Object.assign({ date: d }, r))));
   const soon = [];
   for (let k = 0; k < 14; k++) {
     const d = addDays(today(), k);
     commonRanges(d, mode).filter(r => r.mins >= 60).forEach(r => soon.push(Object.assign({ date: d }, r)));
   }
-  const rangeBtn = (r, d) => `<button class="range" data-act="form" data-form="event" data-date="${d}" data-start="${r.from}" data-end="${r.to}" data-who="${r.key}">
-      <span class="r-time">${d !== date ? `<small>${md(d)}</small>` : ''}${r.from}〜${r.to}</span>
-      <span class="r-who">${mode === 3 ? '3人そろう' : whoChips(r.who)}</span>
-      <span class="r-go">予定を入れる ›</span></button>`;
   return `
   <div class="date-nav">
-    <button class="icon-btn" data-act="dayShift" data-d="-1" aria-label="前の日">‹</button>
-    <h2>${md(date)}</h2>
-    <button class="icon-btn" data-act="dayShift" data-d="1" aria-label="次の日">›</button>
+    <button class="icon-btn" data-act="dayShift" data-d="-7" aria-label="前の週">‹</button>
+    <h2>${mdShort(week[0])} 〜 ${mdShort(week[6])}</h2>
+    <button class="icon-btn" data-act="dayShift" data-d="7" aria-label="次の週">›</button>
   </div>
   <div class="seg mode-seg">
     <button class="${mode === 3 ? 'on' : ''}" data-act="freeMode" data-m="3">3人そろう時間</button>
     <button class="${mode === 2 ? 'on' : ''}" data-act="freeMode" data-m="2">2人以上の時間</button>
   </div>
   <div class="tl-wrap">
-    <div class="tl" style="--n:${cols.length}">
-      <div class="tl-h"></div>${cols.map(c => `<div class="tl-h" style="color:${c.m.color}">${esc(c.m.name)}</div>`).join('')}<div class="tl-h">共通</div>
-      ${grid}
-    </div>
-    <div class="tl-legend"><span><i class="s-ok"></i>集まれる</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-u"></i>未入力</span></div>
+    <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
+    <div class="wk">${grid}</div>
+    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-u"></i>未入力</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
   </div>
-  <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${date}">自分の空き時間を入力（${md(date)}）</button>
-  <h3 class="sec">${md(date)}の共通の時間</h3>
-  ${ranges.length ? ranges.map(r => rangeBtn(r, date)).join('') : `<p class="empty-msg">${mode === 3 ? '3人そろう' : '2人以上そろう'}時間はまだありません。<br>「集まれる」を入力した時間だけで計算しています。</p>`}
+  <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${week[0]}">自分の空き時間を入力（この週）</button>
+  <h3 class="sec">この週の共通の時間</h3>
+  ${weekRanges.length ? weekRanges.map(r => rangeBtn(r, r.date)).join('') : `<p class="empty-msg">${mode === 3 ? '3人そろう' : '2人以上そろう'}時間はまだありません。<br>「集まれる」を入力した時間だけで計算しています。</p>`}
   <h3 class="sec">この先2週間（1時間以上そろう時間）</h3>
   ${soon.length ? soon.slice(0, 20).map(r => rangeBtn(r, r.date)).join('') : '<p class="empty-msg">見つかりませんでした</p>'}`;
 }
@@ -1107,6 +1121,32 @@ const FORMS = {
       <button class="btn gem" type="submit">保存する</button>
     </form>`;
   },
+  availWeek(_, o = {}) {
+    const days = weekDays(o.date || S.day);
+    if (!S.weekEdit || !o.keep) S.weekEdit = { slots: {} };
+    S.weekEdit.start = days[0];
+    days.forEach(d => { if (!S.weekEdit.slots[d]) S.weekEdit.slots[d] = availRow(S.me.id, d).split(''); });
+    const pm = o.pm || '1';
+    return `<form data-form="availWeek">${sheetHead('空き時間を入力（1週間）')}
+      <p class="hint" style="margin:-6px 0 10px">指でなぞると、まとめて塗れます。日付を押すと、その日を丸ごと塗れます。シフトの時間は自動で「集まれない」になります。</p>
+      <div class="date-nav wk-nav">
+        <button type="button" class="icon-btn" data-act="weekNav" data-d="-7" aria-label="前の週">‹</button>
+        <h2>${mdShort(days[0])} 〜 ${mdShort(days[6])}</h2>
+        <button type="button" class="icon-btn" data-act="weekNav" data-d="7" aria-label="次の週">›</button>
+      </div>
+      <div class="seg paint">
+        <label class="seg-i"><input type="radio" name="pm" value="1" ${pm === '1' ? 'checked' : ''}><span class="pm-ok">◯ 集まれる</span></label>
+        <label class="seg-i"><input type="radio" name="pm" value="2" ${pm === '2' ? 'checked' : ''}><span class="pm-ng">✕ 集まれない</span></label>
+        <label class="seg-i"><input type="radio" name="pm" value="0" ${pm === '0' ? 'checked' : ''}><span>消す</span></label>
+      </div>
+      <div class="quick">
+        <button type="button" data-act="weekQuick" data-v="1" data-a="34" data-b="48">毎日 夕方以降◯</button>
+        <button type="button" data-act="weekQuick" data-v="0" data-a="0" data-b="48">この週をクリア</button>
+      </div>
+      <div class="wgrid" id="wgrid">${weekRows(days)}</div>
+      <button class="btn gem" type="submit">保存する</button>
+    </form>`;
+  },
   shift(_, o = {}) {
     const now = today().slice(0, 7);
     const months = [0, 1, 2].map(k => { const d = parseYmd(now + '-01'); d.setMonth(d.getMonth() + k); return ymd(d).slice(0, 7); });
@@ -1121,10 +1161,19 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
+  },
+  memo(_, o = {}) {
+    const x = o.id ? S.memos.find(m => m.id === o.id) : null;
+    return `<form data-form="memo" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? 'メモを編集' : '新しいメモ')}
+      <label>タイトル<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}" placeholder="例：作曲シートのフォーマット"></label>
+      <label>内容<textarea name="body" rows="12" maxlength="20000" required placeholder="フォーマットや、みんなに共有したいことを書いてください">${esc(x ? x.body : '')}</textarea></label>
+      <p class="hint" style="margin-top:-6px">3人全員が見られます。編集・削除できるのは書いた本人だけで、ほかの人はコピーだけできます。</p>
+      <button class="btn gem" type="submit">${x ? '保存する' : '追加する'}</button>
+    </form>`;
   },
   adminPw() {
     return `<form data-form="adminPw">${sheetHead('管理者')}
@@ -1274,6 +1323,20 @@ async function handleForm(kind, f, btn) {
       toast(f.dataset.id ? '予定を保存しました' : '予定を入れました 📅');
       return;
     }
+    if (kind === 'availWeek') {
+      const days = Object.keys(S.weekEdit.slots)
+        .map(d => ({ date: d, slots: S.weekEdit.slots[d].join('') }))
+        .filter(x => x.slots !== availRow(S.me.id, x.date));
+      if (days.length) applyBoot(await api('saveAvailWeek', { days }));
+      S.weekEdit = null;
+      closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
+      return;
+    }
+    if (kind === 'memo') {
+      applyBoot(await api('saveMemo', { id: f.dataset.id || '', title: v('title'), body: v('body') }));
+      closeSheet(); refreshAll(); toast(f.dataset.id ? 'メモを保存しました' : 'メモを追加しました 📋');
+      return;
+    }
     if (kind === 'avail') {
       applyBoot(await api('saveAvail', { date: f.dataset.date, slots: S.editSlots.join('') }));
       closeSheet(); refreshAll(); toast('空き時間を保存しました');
@@ -1335,6 +1398,30 @@ function availRows(date) {
   }
   return h;
 }
+function weekRows(days) {
+  const st = days.map(d => stateArr(S.me.id, d, S.weekEdit.slots[d].join('')));
+  let h = `<div class="wt"></div>${days.map(d => {
+    const wd = parseYmd(d).getDay();
+    return `<button type="button" class="wh ${wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''}" data-act="weekFillDay" data-date="${d}"><b>${mdShort(d)}</b><small>${WD[wd]}</small></button>`;
+  }).join('')}`;
+  for (let i = SLOT0; i < 48; i++) {
+    h += `<div class="wt">${i % 2 === 0 ? slotTime(i) : ''}</div>`;
+    h += days.map((d, k) => {
+      const sh = st[k][i] === 'shift';
+      const c = S.weekEdit.slots[d][i];
+      const v = sh ? 'shift' : c === '1' ? 'ok' : c === '2' ? 'ng' : 'u';
+      return `<div class="wc s-${v} ${i % 2 === 0 ? 'hour' : ''}" data-date="${d}" data-i="${i}"></div>`;
+    }).join('');
+  }
+  return h;
+}
+function rerenderWeek(o = {}) {
+  const f = $('#sheet form[data-form=availWeek]'); if (!f) return;
+  const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
+  const scroll = $('#sheet').scrollTop;
+  $('#sheet').innerHTML = FORMS.availWeek(null, Object.assign({ date: S.weekEdit.start, keep: true, pm }, o));
+  $('#sheet').scrollTop = scroll;
+}
 function refreshAgrid() {
   const f = $('#sheet form[data-form=avail]'); if (!f) return;
   $('#agrid').innerHTML = availRows(f.dataset.date);
@@ -1342,6 +1429,16 @@ function refreshAgrid() {
 let painting = false;
 function paintAt(x, y) {
   const el = document.elementFromPoint(x, y);
+  const wc = el && el.closest('#wgrid .wc');
+  if (wc) {
+    const f = $('#sheet form[data-form=availWeek]');
+    const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
+    const arr = S.weekEdit.slots[wc.dataset.date], i = Number(wc.dataset.i);
+    if (wc.classList.contains('s-shift') || arr[i] === pm) return;
+    arr[i] = pm;
+    wc.className = wc.className.replace(/s-\w+/, 's-' + (pm === '1' ? 'ok' : pm === '2' ? 'ng' : 'u'));
+    return;
+  }
   const row = el && el.closest('#agrid .ar');
   if (!row) return;
   const i = Number(row.dataset.i);
@@ -1353,7 +1450,7 @@ function paintAt(x, y) {
   cell.className = 'ac s-' + (pm === '1' ? 'ok' : pm === '2' ? 'ng' : 'u');
 }
 document.addEventListener('pointerdown', e => {
-  if (!e.target.closest('#agrid')) return;
+  if (!e.target.closest('#agrid') && !e.target.closest('#wgrid .wc')) return;
   painting = true; e.preventDefault(); paintAt(e.clientX, e.clientY);
 });
 document.addEventListener('pointermove', e => { if (painting) paintAt(e.clientX, e.clientY); });
@@ -1373,7 +1470,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -1382,6 +1479,28 @@ async function doDelete(btn) {
     refreshAll();
     toast('削除しました');
   }, '削除中…');
+}
+
+// ---------- 掲示板・メモ ----------
+function viewBoard() {
+  const list = S.memos.slice().sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  return `<h2 class="page-title">掲示板・メモ</h2>
+  <p class="muted small" style="margin:-4px 2px 12px">フォーマットや共有したいことを貼っておく場所です。全員が見られて、「コピー」ボタンで中身をコピーできます。編集・削除は書いた本人だけです。</p>
+  <button class="btn gem" data-act="form" data-form="memo">＋ 新しいメモ</button>
+  <div class="memos">${list.length ? list.map(x => {
+    const mine = x.author === S.me.id || isAdminMode();
+    return `<div class="memo" style="--c:${mem(x.author).color}">
+      <div class="memo-top"><b class="memo-title">${esc(x.title)}</b><span class="who" style="--c:${mem(x.author).color}">${esc(mem(x.author).name)}</span></div>
+      <pre class="memo-body">${esc(x.body)}</pre>
+      <div class="memo-foot">
+        <span class="muted small">${timeLabel(x.updatedAt || x.createdAt)}${x.updatedAt && x.updatedAt !== x.createdAt ? '（編集）' : ''}</span>
+        <span class="memo-btns">
+          ${mine ? `<button class="btn ghost sm" data-act="form" data-form="memo" data-id="${esc(x.id)}">✎ 編集</button><button class="btn danger sm" data-act="confirmDel" data-type="memo" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button>` : ''}
+          <button class="btn outline sm" data-act="memoCopy" data-id="${esc(x.id)}">コピー</button>
+        </span>
+      </div>
+    </div>`;
+  }).join('') : '<p class="empty-msg">まだメモはありません</p>'}</div>`;
 }
 
 // ---------- 意見箱 ----------
@@ -1409,7 +1528,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -1656,7 +1775,22 @@ document.addEventListener('click', e => {
     case 'calMode': S.calMode = el.dataset.m; render(); break;
     case 'freeMode': S.freeMode = Number(el.dataset.m); render(); break;
     case 'dayShift': S.day = addDays(S.day, Number(el.dataset.d)); S.month = S.day.slice(0, 7); render(); break;
-    case 'availEdit': openSheet(FORMS.avail(null, { date: el.dataset.date })); break;
+    case 'availEdit': S.weekEdit = null; openSheet(FORMS.availWeek(null, { date: el.dataset.date })); break;
+    case 'weekNav': rerenderWeek({ date: addDays(S.weekEdit.start, Number(el.dataset.d)) }); break;
+    case 'weekQuick': {
+      const v = el.dataset.v, a = Number(el.dataset.a), b = Number(el.dataset.b);
+      weekDays(S.weekEdit.start).forEach(d => { for (let i = a; i < b; i++) S.weekEdit.slots[d][i] = v; });
+      rerenderWeek(); break;
+    }
+    case 'weekFillDay': {
+      const f = $('#sheet form[data-form=availWeek]');
+      const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
+      for (let i = SLOT0; i < 48; i++) S.weekEdit.slots[el.dataset.date][i] = pm;
+      rerenderWeek(); break;
+    }
+    case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
+    case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
+    case 'memoCopy': { const x = S.memos.find(m => m.id === el.dataset.id); if (x) copyText(x.body, '「' + x.title + '」をコピーしました'); break; }
     case 'quickFill': {
       const v = el.dataset.v; const a = Number(el.dataset.a), b = Number(el.dataset.b);
       for (let i = a; i < b; i++) S.editSlots[i] = v;
@@ -1799,6 +1933,9 @@ const Mock = (() => {
     { id: 'e2', title: 'MV打ち合わせ', date: addDays(T, 6), start: '20:00', end: '21:30', place: 'オンライン', note: '', participants: 'katsunii,mitsu', createdBy: 'mitsu', createdAt: ago(10), updatedAt: ago(10) },
   ];
   const shiftImages = [];
+  const memos = [
+    { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
+  ];
   const ideas = [
     { id: 'i1', author: 'kenbo', text: 'ホーム画面に「今日の予定」を出してほしい', status: 'open', createdAt: ago(30), updatedAt: ago(30) },
     { id: 'i2', author: 'mitsu', text: '歌詞をコピーできるボタンがほしい', status: 'done', createdAt: ago(200), updatedAt: ago(100) },
@@ -1819,7 +1956,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos) };
   };
 
   const H = {
@@ -1924,6 +2061,26 @@ const Mock = (() => {
       const i = events.findIndex(e => e.id === r.id); if (i < 0) throw '予定が見つかりません';
       if (events[i].createdBy !== m.id && !m.isAdmin) throw '予定を作った人か管理者だけが削除できます';
       events.splice(i, 1); return boot(m);
+    },
+    saveAvailWeek(r, m) {
+      (r.days || []).forEach(d => {
+        if (!/^[012]{48}$/.test(d.slots)) throw '時間の形式が正しくありません';
+        const row = avail.find(a => a.memberId === m.id && a.date === d.date);
+        if (row) row.slots = d.slots; else avail.push({ memberId: m.id, date: d.date, slots: d.slots });
+      });
+      return boot(m);
+    },
+    saveMemo(r, m) {
+      const title = String(r.title || '').trim(), body = String(r.body || '');
+      if (!title) throw 'タイトルを入力してください'; if (!body.trim()) throw '内容を入力してください';
+      if (r.id) { const x = memos.find(y => y.id === r.id); if (x.author !== m.id && !m.isAdmin) throw '編集できるのは書いた本人だけです'; Object.assign(x, { title, body, updatedAt: now() }); }
+      else memos.push({ id: 'mm' + (++seq), author: m.id, title, body, createdAt: now(), updatedAt: now() });
+      return boot(m);
+    },
+    deleteMemo(r, m) {
+      const i = memos.findIndex(y => y.id === r.id);
+      if (i >= 0) { if (memos[i].author !== m.id && !m.isAdmin) throw '削除できるのは書いた本人だけです'; memos.splice(i, 1); }
+      return boot(m);
     },
     saveAvail(r, m) {
       if (!/^[012]{48}$/.test(r.slots)) throw '時間の形式が正しくありません';
