@@ -622,6 +622,7 @@ function viewSettings() {
     <p class="muted">${push.text}</p>
     ${push.button ? '<button class="btn gem" data-act="push">通知をオンにする</button>' : ''}
     ${push.hint ? `<p class="hint">${push.hint}</p>` : ''}
+    <p class="hint" style="opacity:.6">診断：${pushDiag()}</p>
     <p class="hint">届く通知：タスク・曲・予定の追加／締め切り前日の朝9時／完了（次のステップの担当つき）・遅延・中止の報告／毎月のシフト表提出</p>
   </div>
   ${ideasPanel()}
@@ -1550,6 +1551,17 @@ function pushState() {
     hint: '端末の設定で、このアプリ（またはブラウザ）の通知を許可してください。',
   };
   return { text: '通知はまだオフです。', button: true };
+}
+function pushDiag() {
+  const ps = S.os && S.os.User && S.os.User.PushSubscription;
+  return [
+    isStandalone() ? 'アプリ' : 'ブラウザ',
+    'permission=' + ('Notification' in window ? Notification.permission : 'なし'),
+    'SDK=' + (S.os ? 'OK' : '未読込'),
+    'optedIn=' + (ps ? ps.optedIn : '-'),
+    'token=' + (ps && ps.token ? 'あり' : 'なし'),
+    'SW=' + ('serviceWorker' in navigator ? 'OK' : 'なし'),
+  ].join(' / ');
 }
 async function enablePush(btn) {
   if (!S.os) return toast('通知の準備中です。数秒後にもう一度押してください', 'err');
