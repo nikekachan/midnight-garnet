@@ -382,24 +382,22 @@ function shiftBanner() {
 
 function viewMonth() {
   const [y, m] = S.month.split('-').map(Number);
-  const startPad = new Date(y, m - 1, 1).getDay();
+  const startPad = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 月曜はじまり
   const days = new Date(y, m, 0).getDate();
   const byDay = {};
   S.tasks.forEach(t => { (byDay[t.deadline] = byDay[t.deadline] || []).push(t); });
 
   let cells = '';
-  for (let i = 0; i < startPad; i++) cells += '<div></div>';
+  for (let i = 0; i < startPad; i++) cells += '<div class="cell pad"></div>';
   for (let d = 1; d <= days; d++) {
     const ds = `${y}-${pad(m)}-${pad(d)}`;
-    const list = byDay[ds] || [];
-    const evs = eventsOn(ds);
     const wd = (startPad + d - 1) % 7;
-    const dots = list.slice(0, 3).map(t =>
-      `<i class="dot ${t.status !== 'open' ? 'off' : ''} ${isOverdue(t) ? 'late' : ''}" style="${colorVars(ids(t))}"></i>`).join('')
-      + (list.length > 3 ? `<em>+${list.length - 3}</em>` : '');
-    const evm = evs.slice(0, 2).map(e => `<i class="evm" style="${colorVars(splitIds(e.participants))}"></i>`).join('');
-    cells += `<button class="cell ${ds === today() ? 'today' : ''} ${ds === S.day ? 'sel' : ''} ${wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''}" data-act="day" data-day="${ds}"><span>${d}</span>${evm ? `<div class="evms">${evm}</div>` : ''}<div class="dots">${dots}</div></button>`;
+    const chips = dayChips(ds, byDay[ds] || []);
+    const shown = chips.slice(0, 4).join('') + (chips.length > 4 ? `<em class="more">+${chips.length - 4}</em>` : '');
+    cells += `<button class="cell ${ds === today() ? 'today' : ''} ${ds === S.day ? 'sel' : ''} ${wd === 6 ? 'sun' : wd === 5 ? 'sat' : ''}" data-act="day" data-day="${ds}"><span>${d}</span><div class="chips">${shown}</div></button>`;
   }
+  const tail = (7 - (startPad + days) % 7) % 7;
+  for (let i = 0; i < tail; i++) cells += '<div class="cell pad"></div>';
   const dayList = (byDay[S.day] || []).slice().sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1));
   const evs = eventsOn(S.day);
   const isThisMonth = S.month === today().slice(0, 7);
@@ -411,8 +409,9 @@ function viewMonth() {
     ${isThisMonth ? '' : '<button class="icon-btn today-btn" data-act="today">今日</button>'}
     <button class="icon-btn" data-act="month" data-d="1" aria-label="次の月">›</button>
   </div>
-  <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}<span><i class="evm" style="--g:#fff;--c:#fff"></i>予定</span></div>
-  <div class="cal">${WD.map((w, i) => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('')}${cells}</div>
+  <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
+  <div class="legend chip-legend"><span><b class="chip ev" style="--g:#6b5d63">予定</b></span><span><b class="chip sh" style="--c:#6b5d63">シフト</b></span><span><b class="chip tk" style="--c:#6b5d63">タスク</b></span></div>
+  <div class="cal">${[1, 2, 3, 4, 5, 6, 0].map(i => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${WD[i]}</div>`).join('')}${cells}</div>
 
   <div class="day-head">
     <h3>${md(S.day)}</h3>
@@ -427,6 +426,26 @@ function viewMonth() {
   <div class="status-list">${S.members.map(mm => memberDay(mm, S.day)).join('')}</div>
   <h3 class="sec">この日が納期のタスク</h3>
   ${dayList.length ? dayList.map(card).join('') : '<p class="empty-msg">この日が納期のタスクはありません</p>'}`;
+}
+
+// カレンダーのマスに出すラベル（予定 → シフト → タスクの順）
+function dayChips(ds, tasks) {
+  const out = eventsOn(ds).map(e =>
+    `<b class="chip ev" style="${colorVars(splitIds(e.participants))}">${esc(e.title)}</b>`);
+  const prev = addDays(ds, -1);
+  S.members.forEach(mm => {
+    shiftsOn(mm.id, ds).forEach(x => {
+      // 日をまたぐシフトの2日目（00:00〜）は「明け」と表示
+      const ake = x.start === '00:00' && shiftsOn(mm.id, prev).some(p => p.end === '24:00');
+      const label = ake ? '明け' : (x.note || x.start);
+      // マスが狭いので名前は出さず、メンバー色で誰のシフトかを表す
+      out.push(`<b class="chip sh ${ake ? 'ake' : ''}" style="--c:${mm.color}" title="${esc(mm.name)}">${esc(label)}</b>`);
+    });
+  });
+  tasks.slice().sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1)).forEach(t => {
+    out.push(`<b class="chip tk ${t.status !== 'open' ? 'off' : ''} ${isOverdue(t) ? 'late' : ''}" style="${colorVars(ids(t))}">${t.status === 'done' ? '✓ ' : ''}${esc(t.title)}</b>`);
+  });
+  return out;
 }
 
 function memberDay(mm, date) {

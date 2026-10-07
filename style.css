@@ -447,3 +447,26 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:7px;tra
 #pickList{display:grid;gap:10px;margin-top:14px}
 #pickList .btn{border:1px solid var(--line);background:var(--surface)}
 #pickList .dot{width:12px;height:12px;border-radius:50%;flex:none}
+
+/* カレンダー：マスの中にラベルを並べる（予定・シフト・タスク） */
+.cal{gap:0;padding:6px 0 0;overflow:hidden}
+.cal .wd{padding:2px 0 6px}
+.cal .wd.sun,.cell.sun>span{color:#ff6b6b}
+.cal .wd.sat,.cell.sat>span{color:#6b9bff}
+.cell{min-height:96px;border-radius:0;align-items:stretch;padding:4px 1px 4px;border-top:1px solid var(--line);min-width:0;font-size:12px}
+.cell.pad{background:transparent}
+.cell>span{width:24px;height:24px;margin:0 auto 3px;font-size:12px}
+.cell.today>span{background:#fff;color:#000;box-shadow:none}
+.cell.today{background:rgba(255,255,255,.03)}
+.cell.sel{background:rgba(155,17,30,.22);box-shadow:inset 0 0 0 1px rgba(224,17,95,.5);border-radius:6px}
+.chips{display:flex;flex-direction:column;gap:2px;min-width:0}
+.chip{display:block;font-size:10px;line-height:15px;font-weight:600;padding:0 3px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:clip;color:#fff;text-align:center;min-width:0}
+.chip.ev{background:var(--g,var(--c))}
+.chip.sh{background:var(--c);opacity:.92}
+.chip.sh.ake{background:transparent;border:1px solid var(--c);color:var(--c);line-height:13px}
+.chip.tk{background:rgba(255,255,255,.06);border-left:3px solid var(--c);text-align:left;color:var(--text);font-weight:500}
+.chip.tk.off{opacity:.4}
+.chip.tk.late{color:var(--late)}
+.cell .more{font-size:9px;color:var(--muted);font-style:normal;text-align:center;line-height:12px}
+.chip-legend{margin-top:-4px}
+.chip-legend .chip{display:inline-block;min-width:44px}
