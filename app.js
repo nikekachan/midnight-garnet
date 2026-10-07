@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [],
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -225,7 +225,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -329,7 +329,16 @@ const SLOT0 = 16; // 8:00から表示（データは0:00〜24:00の30分×48コ�
 const slotTime = i => i >= 48 ? '24:00' : `${pad(Math.floor(i / 2))}:${i % 2 ? '30' : '00'}`;
 const toMin = hm => { const [h, m] = String(hm).split(':').map(Number); return h * 60 + m; };
 const availRow = (mid, date) => (S.avail.find(a => a.memberId === mid && a.date === date) || {}).slots || '0'.repeat(48);
-const shiftsOn = (mid, date) => S.shifts.filter(x => x.memberId === mid && x.date === date).sort((a, b) => a.start.localeCompare(b.start));
+/** その日のシフト。その月に取り込んだシフトがなければ、固定シフト（毎週同じ曜日）を使う */
+const shiftsOn = (mid, date) => {
+  const month = date.slice(0, 7);
+  if (S.shifts.some(x => x.memberId === mid && x.date.slice(0, 7) === month)) {
+    return S.shifts.filter(x => x.memberId === mid && x.date === date).sort((a, b) => a.start.localeCompare(b.start));
+  }
+  const wd = parseYmd(date).getDay();
+  return (S.fixedShifts || []).filter(f => f.member === mid && f.days.includes(wd))
+    .map(f => ({ memberId: mid, date, start: f.start, end: f.end, note: f.note || '', fixed: true }));
+};
 function stateArr(mid, date, slots) {
   const base = (slots || availRow(mid, date)).split('').map(c => c === '1' ? 'ok' : c === '2' ? 'ng' : 'u');
   shiftsOn(mid, date).forEach(sh => {
