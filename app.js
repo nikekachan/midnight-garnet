@@ -4,6 +4,7 @@
 
 const CFG = window.MG_CONFIG || {};
 const DEMO = !CFG.GAS_URL;
+const GOOGLE = !DEMO && !!CFG.GOOGLE_CLIENT_ID;
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const STATUS_LABEL = { open: '進行中', done: '完了', failed: '完了不可', closed: '強制終了' };
 const STEP_LABEL = { done: '完了', current: '進行中', waiting: '待機中', failed: '完了不可', closed: '強制終了' };
@@ -204,6 +205,10 @@ async function boot() {
     ? 'デモモードで表示中<br><b>DEMO1</b>＝かつにい ／ <b>DEMO2</b>＝みつ ／ <b>DEMO3</b>＝けんぼー'
     : '';
   initPush();
+  $('#gLogin').hidden = !GOOGLE;
+  $('#loginForm').hidden = GOOGLE;
+  const idToken = takeGoogleRedirect();
+  if (idToken) { showLogin(); return googleLogin(idToken); }
   if (!S.token) return showLogin();
   try { await load(); }
   catch (e) { if (!S.token) return showLogin(); toast(e.message, 'err'); }
@@ -238,18 +243,58 @@ function showApp() {
   openFromHash();
 }
 
+async function finishLogin(r) {
+  S.token = r.token; store.set('mg_token', r.token);
+  await load();
+  $('#code').value = '';
+  $('#pickBox').hidden = true; $('#gLogin').hidden = !GOOGLE;
+  showApp();
+  toast(`ようこそ、${S.me.name}さん 💫`);
+}
+
 $('#loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('#loginForm button');
-  await busy(btn, async () => {
-    const r = await api('login', { code: $('#code').value });
-    S.token = r.token; store.set('mg_token', r.token);
-    await load();
-    $('#code').value = '';
-    showApp();
-    toast(`ようこそ、${S.me.name}さん 💫`);
-  }, 'ログイン中…');
+  await busy(btn, async () => finishLogin(await api('login', { code: $('#code').value })), 'ログイン中…');
 });
+
+// ----- Googleでログイン（Googleの画面へ移動 → #id_token=… 付きで戻ってくる） -----
+function siteUrl() { return location.origin + location.pathname.replace(/[^/]*$/, ''); }
+$('#gBtn').addEventListener('click', () => {
+  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  store.set('mg_nonce', nonce);
+  const q = new URLSearchParams({
+    client_id: CFG.GOOGLE_CLIENT_ID, redirect_uri: siteUrl(), response_type: 'id_token',
+    scope: 'openid email', nonce, prompt: 'select_account',
+  });
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + q;
+});
+function takeGoogleRedirect() {
+  if (!GOOGLE) return null;
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.has('id_token') && !h.has('error')) return null;
+  history.replaceState(null, '', siteUrl());
+  if (h.has('error')) { toast('Googleログインがキャンセルされました', 'err'); return null; }
+  const tok = h.get('id_token');
+  try {
+    const p = JSON.parse(decodeURIComponent(escape(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    if (!p.nonce || p.nonce !== store.get('mg_nonce')) throw 0;
+  } catch (e) { toast('Googleログインに失敗しました。もう一度お試しください', 'err'); return null; }
+  store.del('mg_nonce');
+  return tok;
+}
+async function googleLogin(credential) {
+  await busy($('#gBtn'), async () => {
+    const r = await api('googleLogin', { credential });
+    if (!r.needPick) return finishLogin(r);
+    $('#gLogin').hidden = true; $('#pickBox').hidden = false;
+    $('#pickEmail').textContent = r.email;
+    $('#pickList').innerHTML = r.choices.map(m =>
+      `<button class="btn" type="button" data-pick="${esc(m.id)}"><span class="dot" style="background:${esc(m.color)}"></span>${esc(m.name)}</button>`).join('');
+    $$('#pickList [data-pick]').forEach(b => b.addEventListener('click', () =>
+      busy(b, async () => finishLogin(await api('pickMember', { pickToken: r.pickToken, memberId: b.dataset.pick })), 'ログイン中…')));
+  }, 'ログイン中…');
+}
 
 function signOutLocal() {
   S.token = null; S.me = null; S.adminToken = null; store.del('mg_token');
@@ -1076,7 +1121,7 @@ const FORMS = {
   },
   resubmit(t) { return t.kind === 'composition' ? compForm(t, true) : lyricsForm(t, true); },
   logout() {
-    return `${sheetHead('ログアウトしますか？')}<p class="hint" style="margin:0 0 14px">この端末でもう一度使うときは、ログインコードの入力が必要になります。</p><button class="btn danger" data-act="logoutYes">ログアウトする</button>`;
+    return `${sheetHead('ログアウトしますか？')}<p class="hint" style="margin:0 0 14px">この端末でもう一度使うときは、もう一度ログインが必要になります。</p><button class="btn danger" data-act="logoutYes">ログアウトする</button>`;
   },
 };
 

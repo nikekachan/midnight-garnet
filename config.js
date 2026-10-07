@@ -6,4 +6,8 @@ window.MG_CONFIG = {
 
   // OneSignal の App ID（設定 > Keys & IDs にある英数字）
   ONESIGNAL_APP_ID: '',
+
+  // Googleログイン用の「OAuth クライアント ID」（……apps.googleusercontent.com）
+  // 空欄のままだと、これまでどおりログインコードでログインします
+  GOOGLE_CLIENT_ID: '398325468006-26iafk2kg5i87lnqtqqosd16bupbvh49.apps.googleusercontent.com',
 };

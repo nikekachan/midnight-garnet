@@ -440,3 +440,10 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:7px;tra
 .check{display:flex;gap:8px;align-items:center;color:var(--text);font-size:13px;margin:10px 0}
 .check input{width:auto;margin:0}
 #shiftImport{font-family:ui-monospace,monospace;font-size:13px}
+
+/* Googleログイン・名前の選択 */
+.btn.gbtn{background:#fff;color:#1f1f1f;font-weight:600;letter-spacing:.02em}
+.pick-lead{font-size:17px;font-weight:700;margin:6px 0 0}
+#pickList{display:grid;gap:10px;margin-top:14px}
+#pickList .btn{border:1px solid var(--line);background:var(--surface)}
+#pickList .dot{width:12px;height:12px;border-radius:50%;flex:none}
