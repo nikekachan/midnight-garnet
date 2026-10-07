@@ -5,7 +5,7 @@ window.MG_CONFIG = {
   GAS_URL: 'https://script.google.com/macros/s/AKfycbwcXTqWgeM1Gz2R6h837qzIhI7vIdSa6V_fJY-qWXn0Yw5Rq2nzcz802R2OzLaD6bis/exec',
 
   // OneSignal の App ID（設定 > Keys & IDs にある英数字）
-  ONESIGNAL_APP_ID: '',
+  ONESIGNAL_APP_ID: '223a19dc-7bd2-4e19-a25f-6128155ff6fe',
 
   // Googleログイン用の「OAuth クライアント ID」（……apps.googleusercontent.com）
   // 空欄のままだと、これまでどおりログインコードでログインします
