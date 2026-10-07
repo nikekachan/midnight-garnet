@@ -1521,6 +1521,7 @@ function initPush() {
       S.os = OneSignal;
       linkPush();
       OneSignal.Notifications.addEventListener('permissionChange', () => { if (S.view === 'settings') render(); });
+      OneSignal.User.PushSubscription.addEventListener('change', () => { if (S.view === 'settings') render(); });
     } catch (e) { console.warn('OneSignal', e); }
   });
 }
@@ -1539,7 +1540,11 @@ function pushState() {
     hint: 'Safariの共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開いて、もう一度ログインしてください。',
   };
   if (!('Notification' in window)) return { text: 'この端末・ブラウザは通知に対応していません。' };
-  if (Notification.permission === 'granted') return { text: '🔔 通知はオンです。' };
+  const optedIn = !!(S.os && S.os.User && S.os.User.PushSubscription.optedIn);
+  if (Notification.permission === 'granted' && optedIn) return { text: '🔔 通知はオンです。' };
+  if (Notification.permission === 'granted') return {
+    text: '通知の登録がまだ完了していません。', hint: '下のボタンをもう一度押してください。', button: true,
+  };
   if (Notification.permission === 'denied') return {
     text: '通知がブロックされています。',
     hint: '端末の設定で、このアプリ（またはブラウザ）の通知を許可してください。',
@@ -1549,8 +1554,12 @@ function pushState() {
 async function enablePush(btn) {
   if (!S.os) return toast('通知の準備中です。数秒後にもう一度押してください', 'err');
   await busy(btn, async () => {
-    await S.os.Notifications.requestPermission();
     if (S.me) await S.os.login(S.me.id);
+    if (Notification.permission !== 'granted') await S.os.Notifications.requestPermission();
+    if (Notification.permission === 'granted') await S.os.User.PushSubscription.optIn();
+    if (S.me) await S.os.login(S.me.id);
+    if (!S.os.User.PushSubscription.optedIn) throw new Error('通知の登録に失敗しました。アプリを閉じて開き直し、もう一度お試しください');
+    toast('通知をオンにしました 🔔');
   }, '設定中…');
   render();
 }
