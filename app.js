@@ -1519,12 +1519,15 @@ function initPush() {
         serviceWorkerPath: base.replace(/^\//, '') + 'OneSignalSDKWorker.js',
         serviceWorkerParam: { scope: base },
       });
-      S.os = OneSignal;
+      S.os = OneSignal; S.osErr = '';
       linkPush();
       OneSignal.Notifications.addEventListener('permissionChange', () => { if (S.view === 'settings') render(); });
       OneSignal.User.PushSubscription.addEventListener('change', () => { if (S.view === 'settings') render(); });
-    } catch (e) { console.warn('OneSignal', e); }
+    } catch (e) { console.warn('OneSignal', e); S.osErr = String((e && e.message) || e); if (S.view === 'settings') render(); }
   });
+  S.osErr = 'SDK読込中';
+  s.onload = () => { if (S.osErr === 'SDK読込中') S.osErr = '初期化中'; };
+  s.onerror = () => { S.osErr = 'SDKの読み込みに失敗'; };
 }
 function linkPush() {
   if (S.os && S.me) S.os.login(S.me.id).catch(() => {});
@@ -1557,7 +1560,7 @@ function pushDiag() {
   return [
     isStandalone() ? 'アプリ' : 'ブラウザ',
     'permission=' + ('Notification' in window ? Notification.permission : 'なし'),
-    'SDK=' + (S.os ? 'OK' : '未読込'),
+    'SDK=' + (S.os ? 'OK' : '未読込（' + (S.osErr || '?') + '）'),
     'optedIn=' + (ps ? ps.optedIn : '-'),
     'token=' + (ps && ps.token ? 'あり' : 'なし'),
     'SW=' + ('serviceWorker' in navigator ? 'OK' : 'なし'),
