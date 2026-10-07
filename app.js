@@ -41,7 +41,8 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [],
+  worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   calMine: store.get('mg_calMine') === '1', calShift: store.get('mg_calShift') !== '0', weekEdit: null,
   calMode: 'month', freeMode: 3,
   adminToken: null, adminTab: 'tasks', editSlots: null,
@@ -222,7 +223,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -333,8 +334,15 @@ function stateArr(mid, date, slots) {
     const a = toMin(sh.start), b = toMin(sh.end);
     for (let i = 0; i < 48; i++) if (i * 30 < b && i * 30 + 30 > a) base[i] = 'shift';
   });
+  // 個人の予定は、入力に関係なく「集まれない」
+  personalOn(mid, date).forEach(ev => {
+    const a = toMin(ev.start), b = toMin(ev.end);
+    for (let i = 0; i < 48; i++) if (base[i] !== 'shift' && i * 30 < b && i * 30 + 30 > a) base[i] = 'busy';
+  });
   return base;
 }
+const personalOn = (mid, date) => S.events.filter(e => e.kind === 'personal' && e.createdBy === mid && e.date === date);
+const KIND_ICON = { meeting: '🗣 ', personal: '🔒 ' };
 function rangesOf(arr, pred) {
   const out = []; let st = -1;
   for (let i = SLOT0; i <= 48; i++) {
@@ -367,10 +375,10 @@ const isMyEvent = e => splitIds(e.participants).includes(S.me.id) || e.createdBy
 
 function viewCalendar() {
   return `
-  <div class="segtabs">${[['month', 'カレンダー'], ['free', '空き時間・共通時間']].map(([k, l]) =>
+  <div class="segtabs three">${[['month', 'カレンダー'], ['free', '空き時間・共通'], ['minutes', '議事録']].map(([k, l]) =>
     `<button class="${S.calMode === k ? 'on' : ''}" data-act="calMode" data-m="${k}">${l}</button>`).join('')}</div>
-  ${shiftBanner()}
-  ${S.calMode === 'free' ? viewFree() : viewMonth()}`;
+  ${S.calMode === 'minutes' ? '' : shiftBanner()}
+  ${S.calMode === 'free' ? viewFree() : S.calMode === 'minutes' ? viewMinutes() : viewMonth()}`;
 }
 
 function myShiftTask() {
@@ -441,7 +449,9 @@ function viewMonth() {
 // カレンダーのマスに出すラベル（予定 → シフト → タスクの順）
 function dayChips(ds, tasks) {
   const out = eventsOn(ds).filter(e => !S.calMine || isMyEvent(e)).map(e =>
-    `<b class="chip ev" style="${colorVars(splitIds(e.participants))}">${esc(e.title)}</b>`);
+    e.kind === 'personal'
+      ? `<b class="chip ps" style="--c:${mem(e.createdBy).color}">${esc(e.createdBy === S.me.id ? e.title : '予定あり')}</b>`
+      : `<b class="chip ev ${e.kind === 'meeting' ? 'mtg' : ''}" style="${colorVars(splitIds(e.participants))}">${e.kind === 'meeting' ? '🗣' : ''}${esc(e.title)}</b>`);
   const prev = addDays(ds, -1);
   S.members.forEach(mm => {
     if (!S.calShift || (S.calMine && mm.id !== S.me.id)) return;
@@ -466,6 +476,8 @@ function memberDay(mm, date) {
   const sh = shiftsOn(mm.id, date).map(x => `${x.start}〜${x.end}${x.note ? `（${esc(x.note)}）` : ''}`);
   const parts = [];
   if (sh.length) parts.push(`<span class="st-sh">シフト ${sh.join('、')}</span>`);
+  const ps = personalOn(mm.id, date).map(x => `${x.start}〜${x.end}${mm.id === S.me.id ? `（${esc(x.title)}）` : ''}`);
+  if (ps.length) parts.push(`<span class="st-ps">個人の予定 ${ps.join('、')}</span>`);
   if (ok.length) parts.push(`<span class="st-ok">◯ ${ok.join('、')}</span>`);
   if (ng.length) parts.push(`<span class="st-ng">✕ ${ng.join('、')}</span>`);
   return `<div class="mday"><span class="who" style="--c:${mm.color}">${esc(mm.name)}</span><div>${parts.join('') || '<span class="muted">未入力</span>'}</div></div>`;
@@ -476,7 +488,8 @@ function eventCard(e) {
   return `<button class="ev-card" data-act="event" data-id="${esc(e.id)}" style="${colorVars(parts)}">
     <div class="ev-time"><b>${esc(e.start)}</b><span>${esc(e.end)}</span></div>
     <div class="ev-main">
-      <div class="ev-title">${esc(e.title)}</div>
+      <div class="ev-title">${KIND_ICON[e.kind] || ''}${esc(e.title)}</div>
+      ${e.kind === 'meeting' && e.agenda ? `<div class="ev-place">議題：${esc(e.agenda.split('\n')[0])}</div>` : ''}
       ${e.place ? `<div class="ev-place">📍 ${esc(e.place)}</div>` : ''}
       ${whoChips(parts)}
     </div>
@@ -523,7 +536,7 @@ function viewFree() {
   <div class="tl-wrap">
     <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
     <div class="wk">${grid}</div>
-    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-u"></i>未入力</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
+    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-u"></i>未入力</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
   </div>
   <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${week[0]}">自分の空き時間を入力（この週）</button>
   <h3 class="sec">この週の共通の時間</h3>
@@ -559,13 +572,97 @@ function viewWorks() {
   const singles = S.projects.filter(p => p.type === 'song' && !p.parentId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return `
   <h2 class="page-title">作品</h2>
+  <div class="segtabs">${[['making', '制作中'], ['disco', 'ディスコグラフィ']].map(([k, l]) =>
+    `<button class="${S.worksMode === k ? 'on' : ''}" data-act="worksMode" data-m="${k}">${l}</button>`).join('')}</div>
+  ${S.worksMode === 'disco' ? viewDisco() : `
   <div class="works-actions">
     <button class="btn ghost sm" data-act="form" data-form="song">＋ 曲を作る</button>
     <button class="btn ghost sm" data-act="form" data-form="album">＋ アルバムを作る</button>
   </div>
   ${albums.length ? `<h3 class="sec">アルバム</h3>${albums.map(albumCard).join('')}` : ''}
   ${singles.length ? `<h3 class="sec">曲（シングル）</h3>${singles.map(songCard).join('')}` : ''}
-  ${!albums.length && !singles.length ? '<p class="empty-msg">まだ作品がありません。<br>「曲を作る」から、作曲 → 作詞 → レコーディング… の順番でタスクを作れます。</p>' : ''}`;
+  ${!albums.length && !singles.length ? '<p class="empty-msg">まだ作品がありません。<br>「曲を作る」から、作曲 → 作詞 → レコーディング… の順番でタスクを作れます。</p>' : ''}`}`;
+}
+
+// ---------- ディスコグラフィ ----------
+function jacketSrc(r) {
+  const c = S.jackets[r.id];
+  return r.jacketAt && c && c.v === r.jacketAt ? c.d : '';
+}
+/** 足りないジャケット画像だけをまとめて読む（端末にも保存して、次からは通信しない） */
+let jacketLoading = false;
+async function loadJackets() {
+  const need = [];
+  S.releases.forEach(r => {
+    if (!r.jacketAt || jacketSrc(r)) return;
+    try { const c = JSON.parse(store.get('mg_jk_' + r.id) || 'null'); if (c && c.v === r.jacketAt) { S.jackets[r.id] = c; return; } } catch (e) {}
+    need.push(r.id);
+  });
+  if (!need.length) { if (S.view === 'works' && S.worksMode === 'disco') render(); return; }
+  if (jacketLoading) return;
+  jacketLoading = true;
+  try {
+    const res = await api('getJackets', { ids: need });
+    Object.keys(res.jackets || {}).forEach(id => {
+      const r = S.releases.find(x => x.id === id); if (!r) return;
+      S.jackets[id] = { v: r.jacketAt, d: res.jackets[id] };
+      store.set('mg_jk_' + id, JSON.stringify(S.jackets[id]));
+    });
+  } catch (e) {} finally { jacketLoading = false; }
+  if (S.view === 'works' && S.worksMode === 'disco') render();
+}
+function viewDisco() {
+  const list = S.releases.slice().sort((a, b) => String(b.releaseDate || b.createdAt).localeCompare(String(a.releaseDate || a.createdAt)));
+  if (list.some(r => r.jacketAt && !jacketSrc(r))) setTimeout(loadJackets, 0);
+  return `<button class="btn ghost sm" data-act="form" data-form="release" style="margin-bottom:12px">＋ 作品を追加</button>
+  ${list.length ? `<div class="disco">${list.map(r => {
+    const src = jacketSrc(r);
+    return `<button class="rel" data-act="relOpen" data-id="${esc(r.id)}">
+      ${src ? `<img class="jacket" src="${src}" alt="" loading="lazy">` : `<div class="jacket none ${r.jacketAt ? 'loading' : ''}"><span>${esc(r.title)}</span></div>`}
+      <b>${esc(r.title)}</b>
+      <small>${esc(r.type)}${r.releaseDate ? '・' + esc(r.releaseDate.slice(0, 4)) : ''}${r.tunecoreUrl ? '<i class="tc">TuneCore</i>' : ''}</small>
+    </button>`;
+  }).join('')}</div>` : '<p class="empty-msg">まだ作品がありません。<br>「作品を追加」から、ジャケットとTuneCoreのURLを登録できます。</p>'}`;
+}
+/** ジャケット画像を小さく圧縮（最大360px・JPEG）。1セルに収まるまで画質を下げる */
+async function compressJacket(file) {
+  const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('画像を読み込めませんでした')); i.src = url; });
+  for (const [size, q] of [[360, 0.6], [320, 0.5], [280, 0.45], [240, 0.4], [200, 0.35]]) {
+    const scale = Math.min(1, size / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    const d = c.toDataURL('image/jpeg', q);
+    if (d.length <= 45000) return d;
+  }
+  throw new Error('画像が大きすぎます。別の画像でお試しください');
+}
+
+// ---------- 議事録（会議を月ごとに） ----------
+function viewMinutes() {
+  const [y, m] = S.minMonth.split('-').map(Number);
+  const list = S.events.filter(e => e.kind === 'meeting' && e.date.slice(0, 7) === S.minMonth)
+    .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  return `
+  <div class="cal-head">
+    <button class="icon-btn" data-act="minMonth" data-d="-1" aria-label="前の月">‹</button>
+    <h2>${y}.${pad(m)}</h2>
+    <button class="icon-btn" data-act="minMonth" data-d="1" aria-label="次の月">›</button>
+  </div>
+  <button class="btn gem sm" data-act="form" data-form="event" data-kind="meeting" data-date="${S.minMonth === today().slice(0, 7) ? today() : S.minMonth + '-01'}" style="margin-bottom:12px">＋ 会議を追加</button>
+  ${list.length ? list.map(e => `<div class="mtg" style="${colorVars(splitIds(e.participants))}">
+    <div class="mtg-top"><b>🗣 ${esc(e.title)}</b><span class="muted small">${md(e.date)} ${esc(e.start)}〜${esc(e.end)}</span></div>
+    ${whoChips(splitIds(e.participants))}
+    <div class="mtg-lbl">議題</div>
+    <pre class="memo-body">${e.agenda ? esc(e.agenda) : '<span class="muted">未記入</span>'}</pre>
+    <div class="mtg-lbl">議事録</div>
+    <pre class="memo-body">${e.minutes ? esc(e.minutes) : '<span class="muted">まだ書かれていません</span>'}</pre>
+    <div class="memo-btns" style="margin-top:10px">
+      <button class="btn ghost sm" data-act="form" data-form="event" data-id="${esc(e.id)}">✎ 議事録を書く・編集</button>
+      ${e.minutes ? `<button class="btn outline sm" data-act="minCopy" data-id="${esc(e.id)}">コピー</button>` : ''}
+    </div>
+  </div>`).join('') : '<p class="empty-msg">この月の会議はありません。<br>予定を追加するときに「🗣 会議」を選ぶと、ここに並びます。</p>'}`;
 }
 
 function currentLine(steps) {
@@ -1070,17 +1167,26 @@ const FORMS = {
   event(_, o = {}) {
     const e = o.id ? S.events.find(x => x.id === o.id) : null;
     const who = e ? splitIds(e.participants) : o.who ? splitIds(o.who) : S.members.map(m => m.id);
-    return `<form data-form="event" data-id="${e ? esc(e.id) : ''}">${sheetHead(e ? '予定を編集' : '予定を追加')}
-      <label>やる事（必須）<input name="title" maxlength="60" required value="${esc(e ? e.title : '')}" placeholder="例：スタジオ練習／MV打ち合わせ"></label>
+    const kind = e ? (e.kind || '') : (o.kind || '');
+    return `<form data-form="event" data-id="${e ? esc(e.id) : ''}" data-kind="${kind}">${sheetHead(e ? '予定を編集' : '予定を追加')}
+      <div class="seg kind-seg">
+        <label class="seg-i"><input type="radio" name="kind" value="" ${kind === '' ? 'checked' : ''}><span>📅 予定</span></label>
+        <label class="seg-i"><input type="radio" name="kind" value="meeting" ${kind === 'meeting' ? 'checked' : ''}><span>🗣 会議</span></label>
+        <label class="seg-i"><input type="radio" name="kind" value="personal" ${kind === 'personal' ? 'checked' : ''}><span>🔒 個人の予定</span></label>
+      </div>
+      <p class="hint only-personal" style="margin:-4px 0 10px">自分だけの予定です。ほかの2人には「予定あり」とだけ表示され、その時間は自動で「集まれない」になります。通知は送られません。</p>
+      <label>やる事（必須）<input name="title" maxlength="60" required value="${esc(e ? e.title : '')}" placeholder="例：スタジオ練習／MV打ち合わせ／月例MTG"></label>
       <label>場所<input name="place" maxlength="80" value="${esc(e ? e.place : '')}" placeholder="例：池袋のスタジオ／オンライン"></label>
       <label>日付<input type="date" name="date" required value="${esc(e ? e.date : o.date || S.day)}"></label>
       <div class="two">
         <label>開始<input type="time" name="start" required step="300" value="${esc(e ? e.start : o.start || '18:00')}"></label>
         <label>終了<input type="time" name="end" required step="300" value="${esc(e ? e.end : (o.end && o.end !== '24:00' ? o.end : o.end ? '23:59' : '21:00'))}"></label>
       </div>
-      <div class="field">参加する人${memberSeg('participants', who)}</div>
+      <div class="field only-group">参加する人${memberSeg('participants', who)}</div>
+      <label class="only-meeting">何を議論するか（議題）<textarea name="agenda" rows="3" maxlength="3000" placeholder="例：・新曲のリリース日&#10;・MVの方向性">${esc(e ? e.agenda || '' : '')}</textarea></label>
+      <label class="only-meeting">議事録<textarea name="minutes" rows="8" maxlength="30000" placeholder="会議のあとに、決まったこと・話したことを書いてください">${esc(e ? e.minutes || '' : '')}</textarea></label>
       <label>メモ<textarea name="note" rows="2" maxlength="1000" placeholder="持ち物・やる事の詳細など">${esc(e ? e.note : '')}</textarea></label>
-      <button class="btn gem" type="submit">${e ? '保存する' : '予定を入れて通知'}</button>
+      <button class="btn gem" type="submit">${e ? '保存する' : '予定を入れる'}</button>
     </form>`;
   },
   eventView(_, o = {}) {
@@ -1088,16 +1194,26 @@ const FORMS = {
     if (!e) return sheetHead('予定が見つかりません');
     const parts = splitIds(e.participants);
     const canDel = (S.me && e.createdBy === S.me.id) || isAdminMode();
-    return `${sheetHead(esc(e.title))}
+    const othersPersonal = e.kind === 'personal' && e.createdBy !== S.me.id;
+    if (othersPersonal) return `${sheetHead('予定あり')}
       <div class="ev-detail">
         <div class="evd-row"><span class="lbl">日時</span><b>${md(e.date)} ${esc(e.start)}〜${esc(e.end)}</b></div>
+        <div class="evd-row"><span class="lbl">誰の</span>${whoChips([e.createdBy])}</div>
+        <p class="hint">個人の予定です。この時間は「集まれない」として扱われます。</p>
+      </div>${canDel ? `<button class="btn danger sm" style="margin-top:14px" data-act="confirmDel" data-type="event" data-id="${esc(e.id)}" data-label="予定あり">削除</button>` : ''}`;
+    return `${sheetHead((KIND_ICON[e.kind] || '') + esc(e.title))}
+      <div class="ev-detail">
+        <div class="evd-row"><span class="lbl">日時</span><b>${md(e.date)} ${esc(e.start)}〜${esc(e.end)}</b></div>
+        ${e.kind === 'meeting' ? `<div class="evd-row"><span class="lbl">議題</span><span>${e.agenda ? linkify(e.agenda) : '<span class="muted">未記入</span>'}</span></div>
+        <div class="evd-row"><span class="lbl">議事録</span><span>${e.minutes ? linkify(e.minutes) : '<span class="muted">まだ書かれていません</span>'}</span></div>` : ''}
+        ${e.kind === 'personal' ? '<p class="hint">🔒 個人の予定（ほかの2人には「予定あり」と表示）</p>' : ''}
         ${e.place ? `<div class="evd-row"><span class="lbl">場所</span><span>${esc(e.place)}</span></div>` : ''}
-        <div class="evd-row"><span class="lbl">参加</span>${whoChips(parts)}</div>
+        ${e.kind === 'personal' ? '' : `<div class="evd-row"><span class="lbl">参加</span>${whoChips(parts)}</div>`}
         ${e.note ? `<div class="evd-row"><span class="lbl">メモ</span><span>${linkify(e.note)}</span></div>` : ''}
         <div class="evd-row"><span class="lbl">作成</span><span class="muted">${esc(mem(e.createdBy).name)}</span></div>
       </div>
       <div class="two" style="margin-top:14px">
-        <button class="btn ghost sm" data-act="form" data-form="event" data-id="${esc(e.id)}">✎ 編集</button>
+        <button class="btn ghost sm" data-act="form" data-form="event" data-id="${esc(e.id)}">${e.kind === 'meeting' ? '✎ 議事録・編集' : '✎ 編集'}</button>
         ${canDel ? `<button class="btn danger sm" data-act="confirmDel" data-type="event" data-id="${esc(e.id)}" data-label="${esc(e.title)}">削除</button>` : '<span></span>'}
       </div>`;
   },
@@ -1161,10 +1277,52 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
+  },
+  release(_, o = {}) {
+    const x = o.id ? S.releases.find(r => r.id === o.id) : null;
+    S.jacketDraft = null;
+    const type = x ? x.type : 'Single';
+    const cur = x && jacketSrc(x);
+    return `<form data-form="release" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? '作品を編集' : '作品を追加')}
+      <div class="jk-edit">
+        <img id="jkPrev" class="jacket" alt="" ${cur ? `src="${cur}"` : 'hidden'}>
+        <label class="btn ghost sm jk-pick">ジャケット画像を選ぶ<input type="file" accept="image/*" data-change="jacketFile" hidden></label>
+        ${x && x.jacketAt ? '<label class="check"><input type="checkbox" name="removeJacket" value="1">ジャケットを外す</label>' : ''}
+        <p class="hint">容量を節約するため、小さく圧縮して保存します（画質は少し落ちます）。</p>
+      </div>
+      <label>タイトル（必須）<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}"></label>
+      <div class="two">
+        <label>種類<select name="type">${['Single', 'EP', 'Album', 'その他'].map(t => `<option ${t === type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>リリース日<input type="date" name="releaseDate" value="${esc(x ? x.releaseDate : '')}"></label>
+      </div>
+      <label>TuneCore のURL<input name="tunecoreUrl" inputmode="url" value="${esc(x ? x.tunecoreUrl : '')}" placeholder="https://linkco.re/…"></label>
+      <label>ほかのリンク（1行に1つ）<textarea name="links" rows="3" placeholder="https://open.spotify.com/…&#10;https://youtu.be/…">${esc(x ? x.links : '')}</textarea></label>
+      <label>メモ<textarea name="note" rows="2" maxlength="2000" placeholder="収録曲・クレジットなど">${esc(x ? x.note : '')}</textarea></label>
+      <button class="btn gem" type="submit">${x ? '保存する' : '追加する'}</button>
+    </form>`;
+  },
+  releaseView(_, o = {}) {
+    const x = S.releases.find(r => r.id === o.id);
+    if (!x) return sheetHead('作品が見つかりません');
+    const src = jacketSrc(x);
+    const canDel = x.createdBy === S.me.id || isAdminMode();
+    const links = String(x.links || '').split('\n').filter(Boolean);
+    return `${sheetHead(esc(x.title))}
+      <div class="rel-view">
+        ${src ? `<img class="jacket big" src="${src}" alt="">` : `<div class="jacket big none"><span>${esc(x.title)}</span></div>`}
+        <div class="rel-meta"><span class="badge">${esc(x.type)}</span>${x.releaseDate ? `<span class="muted">${esc(x.releaseDate.replace(/-/g, '.'))} リリース</span>` : ''}</div>
+        ${x.tunecoreUrl ? `<a class="btn gem" href="${esc(x.tunecoreUrl)}" target="_blank" rel="noopener">TuneCore で聴く・買う ↗</a>` : ''}
+        ${links.length ? `<div class="rel-links">${links.map(l => /^https:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a>` : `<span>${esc(l)}</span>`).join('')}</div>` : ''}
+        ${x.note ? `<p class="rel-note">${linkify(x.note)}</p>` : ''}
+      </div>
+      <div class="two" style="margin-top:14px">
+        <button class="btn ghost sm" data-act="form" data-form="release" data-id="${esc(x.id)}">✎ 編集</button>
+        ${canDel ? `<button class="btn danger sm" data-act="confirmDel" data-type="release" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button>` : '<span></span>'}
+      </div>`;
   },
   memo(_, o = {}) {
     const x = o.id ? S.memos.find(m => m.id === o.id) : null;
@@ -1318,9 +1476,21 @@ async function handleForm(kind, f, btn) {
       return;
     }
     if (kind === 'event') {
-      const r = await api('saveEvent', { id: f.dataset.id || '', title: v('title'), place: v('place'), date: v('date'), start: v('start'), end: v('end'), participants: fd.getAll('participants'), note: v('note') });
+      const kind = v('kind');
+      const r = await api('saveEvent', { id: f.dataset.id || '', kind, title: v('title'), place: v('place'), date: v('date'), start: v('start'), end: v('end'),
+        participants: fd.getAll('participants'), note: v('note'), agenda: v('agenda'), minutes: v('minutes') });
       applyBoot(r); closeSheet(); S.day = v('date'); S.month = v('date').slice(0, 7); refreshAll();
-      toast(f.dataset.id ? '予定を保存しました' : '予定を入れました 📅');
+      toast(f.dataset.id ? '保存しました' : kind === 'personal' ? '個人の予定を入れました 🔒' : kind === 'meeting' ? '会議を入れました 🗣' : '予定を入れました 📅');
+      return;
+    }
+    if (kind === 'release') {
+      applyBoot(await api('saveRelease', { id: f.dataset.id || '', title: v('title'), type: v('type'), releaseDate: v('releaseDate'),
+        tunecoreUrl: v('tunecoreUrl'), links: v('links'), note: v('note'), jacket: S.jacketDraft || '', removeJacket: fd.get('removeJacket') ? 1 : 0 }));
+      const id = f.dataset.id;
+      if (id && (S.jacketDraft || fd.get('removeJacket'))) { delete S.jackets[id]; store.del('mg_jk_' + id); }
+      S.jacketDraft = null;
+      closeSheet(); refreshAll(); loadJackets();
+      toast(f.dataset.id ? '保存しました' : '作品を追加しました 💿');
       return;
     }
     if (kind === 'availWeek') {
@@ -1407,9 +1577,9 @@ function weekRows(days) {
   for (let i = SLOT0; i < 48; i++) {
     h += `<div class="wt">${i % 2 === 0 ? slotTime(i) : ''}</div>`;
     h += days.map((d, k) => {
-      const sh = st[k][i] === 'shift';
+      const sh = st[k][i] === 'shift' || st[k][i] === 'busy';
       const c = S.weekEdit.slots[d][i];
-      const v = sh ? 'shift' : c === '1' ? 'ok' : c === '2' ? 'ng' : 'u';
+      const v = sh ? st[k][i] : c === '1' ? 'ok' : c === '2' ? 'ng' : 'u';
       return `<div class="wc s-${v} ${i % 2 === 0 ? 'hour' : ''}" data-date="${d}" data-i="${i}"></div>`;
     }).join('');
   }
@@ -1434,7 +1604,7 @@ function paintAt(x, y) {
     const f = $('#sheet form[data-form=availWeek]');
     const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
     const arr = S.weekEdit.slots[wc.dataset.date], i = Number(wc.dataset.i);
-    if (wc.classList.contains('s-shift') || arr[i] === pm) return;
+    if (wc.classList.contains('s-shift') || wc.classList.contains('s-busy') || arr[i] === pm) return;
     arr[i] = pm;
     wc.className = wc.className.replace(/s-\w+/, 's-' + (pm === '1' ? 'ok' : pm === '2' ? 'ng' : 'u'));
     return;
@@ -1470,7 +1640,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -1528,7 +1698,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -1790,6 +1960,10 @@ document.addEventListener('click', e => {
     }
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
+    case 'worksMode': S.worksMode = el.dataset.m; render(); break;
+    case 'relOpen': openSheet(FORMS.releaseView(null, { id: el.dataset.id })); break;
+    case 'minMonth': { const d = parseYmd(S.minMonth + '-01'); d.setMonth(d.getMonth() + Number(el.dataset.d)); S.minMonth = ymd(d).slice(0, 7); render(); break; }
+    case 'minCopy': { const x = S.events.find(e => e.id === el.dataset.id); if (x) copyText(`${x.title}（${md(x.date)}）\n\n■議題\n${x.agenda || ''}\n\n■議事録\n${x.minutes}`, '議事録をコピーしました'); break; }
     case 'memoCopy': { const x = S.memos.find(m => m.id === el.dataset.id); if (x) copyText(x.body, '「' + x.title + '」をコピーしました'); break; }
     case 'quickFill': {
       const v = el.dataset.v; const a = Number(el.dataset.a), b = Number(el.dataset.b);
@@ -1815,6 +1989,17 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('form[data-form=event] input[name=kind]')) {
+    e.target.closest('form').dataset.kind = e.target.value;
+  }
+  if (e.target.matches('[data-change=jacketFile]')) {
+    const file = e.target.files[0]; if (!file) return;
+    busy(null, async () => {
+      S.jacketDraft = await compressJacket(file);
+      const img = $('#jkPrev'); if (img) { img.src = S.jacketDraft; img.hidden = false; }
+      toast(`圧縮しました（約${Math.round(S.jacketDraft.length * 0.75 / 1024)}KB）`);
+    });
+  }
   if (e.target.matches('[data-change=shiftFile]')) {
     const f = e.target.files[0]; const img = $('#shiftPrev');
     if (f && img) { img.src = URL.createObjectURL(f); img.hidden = false; }
@@ -1832,7 +2017,7 @@ document.addEventListener('submit', e => {
   const f = e.target.closest('form[data-form]');
   if (!f) return;
   e.preventDefault();
-  if (f.dataset.form === 'event' && !f.querySelector('input[name=participants]:checked')) {
+  if (f.dataset.form === 'event' && f.dataset.kind !== 'personal' && !f.querySelector('input[name=participants]:checked')) {
     return toast('参加する人を1人以上選んでください', 'err');
   }
   if ((f.dataset.form === 'task' || f.dataset.form === 'edit') && !f.querySelector('input[name=assignee]:checked')) {
@@ -1933,6 +2118,10 @@ const Mock = (() => {
     { id: 'e2', title: 'MV打ち合わせ', date: addDays(T, 6), start: '20:00', end: '21:30', place: 'オンライン', note: '', participants: 'katsunii,mitsu', createdBy: 'mitsu', createdAt: ago(10), updatedAt: ago(10) },
   ];
   const shiftImages = [];
+  const releases = [
+    { id: 'r1', title: 'Midnight Garnet', type: 'Single', releaseDate: '2026-04-01', tunecoreUrl: 'https://linkco.re/', links: '', note: 'デビューシングル', jacketAt: '', createdBy: 'kenbo', createdAt: now(), updatedAt: now() },
+  ];
+  const jackets = {};
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -1956,7 +2145,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases) };
   };
 
   const H = {
@@ -2052,7 +2241,9 @@ const Mock = (() => {
     saveEvent(r, m) {
       const title = String(r.title || '').trim(); if (!title) throw 'やる事を入力してください';
       const start = hm(r.start), end = hm(r.end); if (end <= start) throw '終了は開始より後の時間にしてください';
-      const o = { title, date: date(r.date), start, end, place: String(r.place || '').trim(), note: String(r.note || '').trim(), participants: norm(r.participants), updatedAt: now() };
+      const kind = ['meeting', 'personal'].includes(r.kind) ? r.kind : '';
+      const o = { title, date: date(r.date), start, end, place: String(r.place || '').trim(), note: String(r.note || '').trim(),
+        participants: kind === 'personal' ? m.id : norm(r.participants), kind, agenda: kind === 'meeting' ? String(r.agenda || '') : '', minutes: kind === 'meeting' ? String(r.minutes || '') : '', updatedAt: now() };
       if (r.id) Object.assign(events.find(e => e.id === r.id), o);
       else events.push(Object.assign({ id: 'e' + (++seq), createdBy: m.id, createdAt: now() }, o));
       return boot(m);
@@ -2070,6 +2261,16 @@ const Mock = (() => {
       });
       return boot(m);
     },
+    saveRelease(r, m) {
+      const title = String(r.title || '').trim(); if (!title) throw 'タイトルを入力してください';
+      const o = { title, type: r.type || 'Single', releaseDate: r.releaseDate || '', tunecoreUrl: r.tunecoreUrl || '', links: r.links || '', note: r.note || '', updatedAt: now() };
+      let x = r.id ? releases.find(y => y.id === r.id) : null;
+      if (x) Object.assign(x, o); else { x = Object.assign({ id: 'r' + (++seq), createdBy: m.id, createdAt: now(), jacketAt: '' }, o); releases.push(x); }
+      if (r.jacket) { jackets[x.id] = r.jacket; x.jacketAt = now(); } else if (r.removeJacket) { delete jackets[x.id]; x.jacketAt = ''; }
+      return boot(m);
+    },
+    deleteRelease(r, m) { const i = releases.findIndex(y => y.id === r.id); if (i >= 0) releases.splice(i, 1); return boot(m); },
+    getJackets(r) { const out = {}; (r.ids || []).forEach(id => { if (jackets[id]) out[id] = jackets[id]; }); return { ok: true, jackets: out }; },
     saveMemo(r, m) {
       const title = String(r.title || '').trim(), body = String(r.body || '');
       if (!title) throw 'タイトルを入力してください'; if (!body.trim()) throw '内容を入力してください';
