@@ -699,3 +699,10 @@ form[data-form=event][data-kind=personal] .only-group{display:none}
 .reply-form{display:flex;gap:6px;align-items:flex-end}
 .reply-form textarea{margin:0;padding:9px 12px;font-size:15px;min-height:40px;resize:vertical}
 .reply-form .btn{width:auto;margin:0;flex:none}
+
+/* スタンプのアニメーション（Motion） */
+.rx-p,.rx-ring,.rx-s{position:fixed;pointer-events:none;z-index:999;will-change:transform,opacity}
+.rx-p{font-size:24px;line-height:1;margin:-12px 0 0 -12px;width:24px;height:24px;text-align:center}
+.rx-ring{width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:2px solid var(--garnet-hi);box-shadow:0 0 14px rgba(224,17,95,.7)}
+.rx-s{width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:radial-gradient(circle,#fff 0,#ff8fa3 45%,#e0115f 100%)}
+.react{transform-origin:center}

@@ -2004,6 +2004,56 @@ function markMemosRead() {
   });
   api('readMemos', { ids }).catch(() => {}).finally(() => { readSending = false; });
 }
+/** スタンプを押す：先に画面を更新してアニメーション → 裏で保存 */
+function reactMemo(el) {
+  const memoId = el.dataset.id, emoji = el.dataset.e;
+  const rect = el.getBoundingClientRect();
+  const i = S.memoMarks.findIndex(k => k.memoId === memoId && k.memberId === S.me.id && k.kind === 'react' && k.value === emoji);
+  const adding = i < 0;
+  if (adding) S.memoMarks.push({ memoId, memberId: S.me.id, kind: 'react', value: emoji, at: new Date().toISOString() });
+  else S.memoMarks.splice(i, 1);
+  render();
+  const btn = $(`.react[data-id="${CSS.escape(memoId)}"][data-e="${emoji}"]`);
+  reactAnim(btn, rect, emoji, adding);
+  api('reactMemo', { memoId, emoji }).then(r => { applyBoot(r); if (S.view === 'board') render(); })
+    .catch(e => { toast(e.message, 'err'); load().then(render).catch(() => {}); });
+}
+/** Motion（Framer Motion のJavaScript版）でスタンプのアニメーション */
+function reactAnim(btn, rect, emoji, adding) {
+  const M = window.Motion;
+  if (!M || !M.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (btn) {
+    if (adding) {
+      M.animate(btn, { scale: [1.7, 1], rotate: [-14, 0] }, { type: M.spring, stiffness: 420, damping: 9 });
+      const b = btn.querySelector('b'); if (b) M.animate(b, { y: [-8, 0], opacity: [0, 1] }, { type: M.spring, stiffness: 500, damping: 14 });
+    } else {
+      M.animate(btn, { scale: [0.8, 1] }, { type: M.spring, stiffness: 500, damping: 15 });
+    }
+  }
+  if (!adding) return;
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const add = (cls, text) => { const d = document.createElement('span'); d.className = cls; if (text) d.textContent = text; d.style.left = cx + 'px'; d.style.top = cy + 'px'; document.body.appendChild(d); return d; };
+  // 波紋
+  const ring = add('rx-ring');
+  M.animate(ring, { scale: [0.3, 2.6], opacity: [0.9, 0] }, { duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }).then(() => ring.remove());
+  // 飛び散るスタンプ
+  for (let k = 0; k < 7; k++) {
+    const p = add('rx-p', emoji);
+    const ang = (-90 + (k - 3) * 26 + (Math.random() * 16 - 8)) * Math.PI / 180;
+    const dist = 70 + Math.random() * 50;
+    M.animate(p, {
+      x: [0, Math.cos(ang) * dist], y: [0, Math.sin(ang) * dist - 20],
+      scale: [0.3, 1.25, 0.7], rotate: [0, Math.random() * 80 - 40], opacity: [1, 1, 0],
+    }, { duration: 0.85 + Math.random() * 0.25, ease: [0.15, 0.85, 0.3, 1] }).then(() => p.remove());
+  }
+  // きらめき（ガーネット色の粒）
+  for (let k = 0; k < 10; k++) {
+    const s = add('rx-s');
+    const ang = Math.random() * Math.PI * 2, dist = 30 + Math.random() * 45;
+    M.animate(s, { x: [0, Math.cos(ang) * dist], y: [0, Math.sin(ang) * dist], scale: [1, 0], opacity: [1, 0] },
+      { duration: 0.55 + Math.random() * 0.3, ease: 'easeOut' }).then(() => s.remove());
+  }
+}
 function viewBoard() {
   const unread = unreadMemos().map(x => x.id);
   setTimeout(() => { markMemosRead(); const hb = $('.hd-badge'); if (hb) hb.remove(); }, 1500);
@@ -2331,7 +2381,7 @@ document.addEventListener('click', e => {
     }
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
-    case 'memoReact': busy(null, async () => { applyBoot(await api('reactMemo', { memoId: el.dataset.id, emoji: el.dataset.e })); render(); }); break;
+    case 'memoReact': reactMemo(el); break;
     case 'offOpen': openSheet(FORMS.offView(null, { id: el.dataset.id })); break;
     case 'worksMode': S.worksMode = el.dataset.m; render(); break;
     case 'syncOpen': openSync(el.dataset.id); break;
