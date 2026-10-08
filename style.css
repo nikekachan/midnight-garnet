@@ -678,3 +678,24 @@ form[data-form=event][data-kind=personal] .only-group{display:none}
 .chip.off{background:#ffcf5a;color:#000}
 .cell.offday{background:rgba(255,207,90,.08)}
 .cell.offday>span{box-shadow:inset 0 0 0 1.5px #ffcf5a}
+
+/* 掲示板：返信・リアクション・既読 */
+.hd-btn{position:relative}
+.hd-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:var(--garnet-hi);color:#fff;font-size:10px;line-height:17px;text-align:center;box-shadow:0 0 8px rgba(224,17,95,.7)}
+.memo-title .new{font-style:normal;font-size:10px;font-weight:700;color:#000;background:var(--rose);border-radius:99px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.reacts{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.react{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);background:var(--surface2);font-size:15px;line-height:1.2;opacity:.55}
+.react.has{opacity:1}
+.react.on{border-color:var(--garnet-hi);background:rgba(224,17,95,.18);opacity:1}
+.react b{font-size:11px;color:var(--text)}
+.react-who{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:11px;color:var(--muted)}
+.react-who i,.read-by i{font-style:normal;font-weight:700}
+.read-by{margin-top:6px;font-size:11px;color:var(--muted)}
+.replies{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:grid;gap:8px}
+.reply{padding:8px 10px;border-radius:10px;background:var(--surface2);border-left:3px solid var(--c)}
+.reply-top{display:flex;align-items:center;gap:8px}
+.reply p{margin:4px 0 0;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.reply-del{margin-left:auto;font-size:11px;color:var(--muted)}
+.reply-form{display:flex;gap:6px;align-items:flex-end}
+.reply-form textarea{margin:0;padding:9px 12px;font-size:15px;min-height:40px;resize:vertical}
+.reply-form .btn{width:auto;margin:0;flex:none}

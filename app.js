@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [],
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -225,7 +225,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -318,7 +318,7 @@ function syncLock() {
 // ---------- メイン画面 ----------
 function render() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span></button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
   const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
@@ -1311,7 +1311,7 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
@@ -1558,6 +1558,11 @@ async function handleForm(kind, f, btn) {
       closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
       return;
     }
+    if (kind === 'memoReply') {
+      applyBoot(await api('replyMemo', { memoId: f.dataset.memo, text: v('text') }));
+      refreshAll(); toast('返信しました 💬');
+      return;
+    }
     if (kind === 'offday') {
       applyBoot(await api('saveOffday', { date: v('date'), note: v('note') }));
       closeSheet(); refreshAll(); toast('全員休みの日を決めました 🚩');
@@ -1701,7 +1706,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -1976,22 +1981,64 @@ document.addEventListener('keydown', e => {
 setInterval(() => { if (S.view === 'mandala' && document.visibilityState === 'visible' && !mdTyping() && !Object.keys(mdPending).length && S.me) loadMandala(); }, 20000);
 
 // ---------- 掲示板・メモ ----------
+// 返信・リアクション・既読
+const MEMO_REACTIONS = ['👍', '❤️', '😂', '🔥', '👀', '🙏'];
+const repliesOf = id => S.memoReplies.filter(r => r.memoId === id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+/** 最後に動きがあった時刻（本文の編集か、返信） */
+const memoActivity = x => repliesOf(x.id).reduce((t, r) => r.createdAt > t ? r.createdAt : t, String(x.updatedAt || x.createdAt));
+const readAt = (memoId, mid) => (S.memoMarks.find(k => k.memoId === memoId && k.memberId === mid && k.kind === 'read') || {}).at || '';
+/** その人にとっての「新しい動き」（自分の投稿・返信は数えない） */
+const activityFor = (x, mid) => repliesOf(x.id).filter(r => r.author !== mid)
+  .reduce((t, r) => r.createdAt > t ? r.createdAt : t, x.author !== mid ? String(x.updatedAt || x.createdAt) : '');
+const hasRead = (x, mid) => { const act = activityFor(x, mid); return !act || readAt(x.id, mid) >= act; };
+const unreadMemos = () => S.me ? S.memos.filter(x => !hasRead(x, S.me.id)) : [];
+let readSending = false;
+function markMemosRead() {
+  const ids = unreadMemos().map(x => x.id);
+  if (!ids.length || readSending) return;
+  readSending = true;
+  const at = new Date().toISOString();
+  ids.forEach(id => {
+    const k = S.memoMarks.find(m => m.memoId === id && m.memberId === S.me.id && m.kind === 'read');
+    if (k) k.at = at; else S.memoMarks.push({ memoId: id, memberId: S.me.id, kind: 'read', value: '', at });
+  });
+  api('readMemos', { ids }).catch(() => {}).finally(() => { readSending = false; });
+}
 function viewBoard() {
-  const list = S.memos.slice().sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  const unread = unreadMemos().map(x => x.id);
+  setTimeout(() => { markMemosRead(); const hb = $('.hd-badge'); if (hb) hb.remove(); }, 1500);
+  const list = S.memos.slice().sort((a, b) => memoActivity(b).localeCompare(memoActivity(a)));
   return `<h2 class="page-title">掲示板・メモ</h2>
   <p class="muted small" style="margin:-4px 2px 12px">フォーマットや共有したいことを貼っておく場所です。全員が見られて、「コピー」ボタンで中身をコピーできます。編集・削除は書いた本人だけです。</p>
   <button class="btn gem" data-act="form" data-form="memo">＋ 新しいメモ</button>
   <div class="memos">${list.length ? list.map(x => {
     const mine = x.author === S.me.id || isAdminMode();
+    const reps = repliesOf(x.id);
+    const reacts = MEMO_REACTIONS.map(e => ({ e, who: S.memoMarks.filter(k => k.memoId === x.id && k.kind === 'react' && k.value === e).map(k => k.memberId) }));
+    const readers = S.members.filter(m => m.id !== x.author && hasRead(x, m.id));
     return `<div class="memo" style="--c:${mem(x.author).color}">
-      <div class="memo-top"><b class="memo-title">${esc(x.title)}</b><span class="who" style="--c:${mem(x.author).color}">${esc(mem(x.author).name)}</span></div>
+      <div class="memo-top"><b class="memo-title">${unread.includes(x.id) ? '<em class="new">NEW</em>' : ''}${esc(x.title)}</b><span class="who" style="--c:${mem(x.author).color}">${esc(mem(x.author).name)}</span></div>
       <pre class="memo-body">${esc(x.body)}</pre>
+      <div class="reacts">${reacts.map(r => `<button class="react ${r.who.includes(S.me.id) ? 'on' : ''} ${r.who.length ? 'has' : ''}" data-act="memoReact" data-id="${esc(x.id)}" data-e="${r.e}" title="${esc(r.who.map(id => mem(id).name).join('・'))}">${r.e}${r.who.length ? `<b>${r.who.length}</b>` : ''}</button>`).join('')}</div>
+      ${reacts.some(r => r.who.length) ? `<div class="react-who">${reacts.filter(r => r.who.length).map(r => `<span>${r.e} ${r.who.map(id => `<i style="color:${mem(id).color}">${esc(mem(id).name)}</i>`).join('・')}</span>`).join('')}</div>` : ''}
+      <div class="read-by">${readers.length ? `既読 ${readers.map(m => `<i style="color:${m.color}">${esc(m.name)}</i>`).join('・')}` : '<span>まだ誰も見ていません</span>'}</div>
       <div class="memo-foot">
         <span class="muted small">${timeLabel(x.updatedAt || x.createdAt)}${x.updatedAt && x.updatedAt !== x.createdAt ? '（編集）' : ''}</span>
         <span class="memo-btns">
           ${mine ? `<button class="btn ghost sm" data-act="form" data-form="memo" data-id="${esc(x.id)}">✎ 編集</button><button class="btn danger sm" data-act="confirmDel" data-type="memo" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button>` : ''}
           <button class="btn outline sm" data-act="memoCopy" data-id="${esc(x.id)}">コピー</button>
         </span>
+      </div>
+      <div class="replies">
+        ${reps.map(r => `<div class="reply" style="--c:${mem(r.author).color}">
+          <div class="reply-top"><span class="who" style="--c:${mem(r.author).color}">${esc(mem(r.author).name)}</span><span class="muted small">${timeLabel(r.createdAt)}</span>
+          ${r.author === S.me.id || isAdminMode() ? `<button class="reply-del" data-act="confirmDel" data-type="reply" data-id="${esc(r.id)}" data-label="返信">削除</button>` : ''}</div>
+          <p>${linkify(r.text)}</p>
+        </div>`).join('')}
+        <form data-form="memoReply" data-memo="${esc(x.id)}" class="reply-form">
+          <textarea name="text" rows="1" maxlength="3000" required placeholder="返信する…"></textarea>
+          <button class="btn gem sm" type="submit">送信</button>
+        </form>
       </div>
     </div>`;
   }).join('') : '<p class="empty-msg">まだメモはありません</p>'}</div>`;
@@ -2022,7 +2069,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -2284,6 +2331,7 @@ document.addEventListener('click', e => {
     }
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
+    case 'memoReact': busy(null, async () => { applyBoot(await api('reactMemo', { memoId: el.dataset.id, emoji: el.dataset.e })); render(); }); break;
     case 'offOpen': openSheet(FORMS.offView(null, { id: el.dataset.id })); break;
     case 'worksMode': S.worksMode = el.dataset.m; render(); break;
     case 'syncOpen': openSync(el.dataset.id); break;
@@ -2478,6 +2526,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
+  const memoReplies = [], memoMarks = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -2501,7 +2550,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks) };
   };
 
   const H = {
@@ -2627,6 +2676,14 @@ const Mock = (() => {
     },
     deleteRelease(r, m) { const i = releases.findIndex(y => y.id === r.id); if (i >= 0) releases.splice(i, 1); return boot(m); },
     getJackets(r) { const out = {}; (r.ids || []).forEach(id => { if (jackets[id]) out[id] = jackets[id]; }); return { ok: true, jackets: out }; },
+    replyMemo(r, m) { memoReplies.push({ id: 'rp' + (++seq), memoId: r.memoId, author: m.id, text: String(r.text || ''), createdAt: now() }); return boot(m); },
+    deleteReply(r, m) { const i = memoReplies.findIndex(x => x.id === r.id); if (i >= 0) memoReplies.splice(i, 1); return boot(m); },
+    reactMemo(r, m) {
+      const i = memoMarks.findIndex(x => x.memoId === r.memoId && x.memberId === m.id && x.kind === 'react' && x.value === r.emoji);
+      if (i >= 0) memoMarks.splice(i, 1); else memoMarks.push({ memoId: r.memoId, memberId: m.id, kind: 'react', value: r.emoji, at: now() });
+      return boot(m);
+    },
+    readMemos(r, m) { (r.ids || []).forEach(id => { const k = memoMarks.find(x => x.memoId === id && x.memberId === m.id && x.kind === 'read'); if (k) k.at = now(); else memoMarks.push({ memoId: id, memberId: m.id, kind: 'read', value: '', at: now() }); }); return { ok: true }; },
     saveOffday(r, m) { const x = offdays.find(o => o.date === r.date); if (x) x.note = r.note || ''; else offdays.push({ id: 'o' + (++seq), date: date(r.date), note: r.note || '', createdBy: m.id, createdAt: now() }); return boot(m); },
     deleteOffday(r, m) { const i = offdays.findIndex(o => o.id === r.id); if (i >= 0) offdays.splice(i, 1); return boot(m); },
     saveMemo(r, m) {
