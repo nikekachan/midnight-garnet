@@ -320,7 +320,8 @@ async function busy(btn, fn, label = '送信中…') {
   const logo = $('.sp-logo', el), flash = $('.sp-flash', el), stage = $('.sp-stage', el);
   // 彗星：短い光の線がパスの上を走る（strokeDasharray で長さ seg の線だけ見せる）
   comets.forEach((p, i) => {
-    const L = p.getTotalLength(), seg = L * 0.22;
+    i = i % 2; // 光の芯と、まわりの赤い光は同じタイミングで走る
+    const L = p.getTotalLength(), seg = L * 0.3;
     p.style.strokeDasharray = `${seg} ${L}`;
     p.style.strokeDashoffset = String(seg);
     const delay = 0.35 + i * 0.12;
@@ -334,7 +335,7 @@ async function busy(btn, fn, label = '送信中…') {
     p.style.strokeDashoffset = String(L);
     const delay = 0.45 + i * 0.15;
     A(p, { strokeDashoffset: [L, 0] }, { duration: 2.1, delay, ease: [0.55, 0.05, 0.35, 1] });
-    A(p, { opacity: [0, 0.55, 0.55, 0] }, { duration: 3.1, delay, times: [0, 0.2, 0.8, 1] });
+    A(p, { opacity: [0, 0.85, 0.85, 0] }, { duration: 3.1, delay, times: [0, 0.2, 0.8, 1] });
   });
   // 右上で光がはじけて、ロゴが現れる
   A(flash, { opacity: [0, 1, 0], scale: [0.2, 1.6, 2.2] }, { duration: 0.7, delay: 2.55, ease: 'easeOut' });
