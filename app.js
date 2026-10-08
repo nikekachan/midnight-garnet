@@ -300,6 +300,51 @@ async function busy(btn, fn, label = '送信中…') {
   finally { if (btn) { btn.disabled = false; if (label && old != null) btn.innerHTML = old; } }
 }
 
+// ---------- 起動時のロゴアニメーション（Motion） ----------
+(function splash() {
+  const el = $('#splash'); if (!el) return;
+  const M = window.Motion;
+  const done = () => { el.classList.add('gone'); window.dispatchEvent(new Event('mg:splashdone')); };
+  if (!M || !M.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setTimeout(() => { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; setTimeout(done, 400); }, 500);
+    return;
+  }
+  const A = M.animate;
+  let finished = false;
+  const finish = () => {
+    if (finished) return; finished = true;
+    A(el, { opacity: 0, scale: 1.06 }, { duration: 0.45, ease: [0.4, 0, 0.2, 1] }).then(done);
+  };
+  el.addEventListener('click', finish); // タップで飛ばせる
+  const comets = $$('.sp-comet', el), trails = $$('.sp-trail', el);
+  const logo = $('.sp-logo', el), flash = $('.sp-flash', el), stage = $('.sp-stage', el);
+  // 彗星：短い光の線がパスの上を走る（strokeDasharray で長さ seg の線だけ見せる）
+  comets.forEach((p, i) => {
+    const L = p.getTotalLength(), seg = L * 0.22;
+    p.style.strokeDasharray = `${seg} ${L}`;
+    p.style.strokeDashoffset = String(seg);
+    const delay = 0.35 + i * 0.12;
+    A(p, { opacity: [0, 1, 1, 0] }, { duration: 2.4, delay, times: [0, 0.08, 0.85, 1] });
+    A(p, { strokeDashoffset: [seg, -L] }, { duration: 2.4, delay, ease: [0.55, 0.05, 0.35, 1] });
+  });
+  // 軌跡：光が通ったあとにうっすら形が残る
+  trails.forEach((p, i) => {
+    const L = p.getTotalLength();
+    p.style.strokeDasharray = `${L} ${L}`;
+    p.style.strokeDashoffset = String(L);
+    const delay = 0.45 + i * 0.15;
+    A(p, { strokeDashoffset: [L, 0] }, { duration: 2.1, delay, ease: [0.55, 0.05, 0.35, 1] });
+    A(p, { opacity: [0, 0.55, 0.55, 0] }, { duration: 3.1, delay, times: [0, 0.2, 0.8, 1] });
+  });
+  // 右上で光がはじけて、ロゴが現れる
+  A(flash, { opacity: [0, 1, 0], scale: [0.2, 1.6, 2.2] }, { duration: 0.7, delay: 2.55, ease: 'easeOut' });
+  A(logo, { opacity: [0, 1], scale: [1.12, 1], filter: ['blur(10px) brightness(2)', 'blur(0px) brightness(1)'] },
+    { duration: 0.9, delay: 2.7, ease: [0.2, 0.8, 0.2, 1] });
+  A(stage, { scale: [0.96, 1] }, { duration: 3.6, ease: 'easeOut' });
+  setTimeout(finish, 4300);
+})();
+window.addEventListener('mg:splashdone', () => { if (S.me && !$('#app').hidden) { S.fxKey = ''; render(); } else FX.login(); });
+
 // ---------- 起動・ログイン ----------
 async function boot() {
   $('#demoHint').innerHTML = DEMO
