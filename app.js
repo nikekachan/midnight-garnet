@@ -165,6 +165,102 @@ async function copyText(text, msg = 'コピーしました') {
   }
 }
 
+// ---------- アニメーション（Motion ＝ Framer Motion のJavaScript版） ----------
+const FX = (() => {
+  const M = () => window.Motion;
+  const ok = () => !!(M() && M().animate) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const spring = (o = {}) => Object.assign({ type: M().spring, stiffness: 380, damping: 30 }, o);
+  const anim = (el, kf, opt) => { try { return M().animate(el, kf, opt); } catch (e) { return null; } };
+  // 入場：同じ親の中で入れ子にならないように、いちばん外側の要素だけを順番に
+  const ENTER = '.page-title,.segtabs,.banner,.off-banner,.cal-head,.date-nav,.legend,.cal-filters,.cal,.day-head,.sec,.card,.pcard,.ev-card,.memo,.mtg,.range,.panel,.mday,.works-actions,.empty-msg,.wk,.md-head,.md-board,.disco,.tl-wrap,.mode-seg,.sync-bar,.sync-lines,.status-list,.memos>.btn,#view>.btn,.md-ed-head,.md-fgrid,.md-detail,.md-nav';
+  function enter(root) {
+    if (!ok() || !root) return;
+    const all = $$(ENTER, root);
+    const top = all.filter(el => !all.some(o => o !== el && o.contains(el))).slice(0, 28);
+    top.forEach((el, i) => anim(el, { opacity: [0, 1], y: [16, 0] }, spring({ delay: i * 0.035 })));
+    // 中の小さな要素も少し遅れて
+    $$('.rel', root).slice(0, 24).forEach((el, i) => anim(el, { opacity: [0, 1], scale: [0.85, 1] }, spring({ delay: 0.12 + i * 0.05, stiffness: 300, damping: 20 })));
+    $$('.chip', root).slice(0, 140).forEach((el, i) => anim(el, { opacity: [0, 1], x: [-6, 0] }, { duration: 0.3, delay: 0.15 + (i % 40) * 0.008 }));
+    $$('.dia', root).slice(0, 80).forEach((el, i) => anim(el, { scale: [0, 1] }, spring({ delay: 0.2 + i * 0.03, stiffness: 500, damping: 14 })));
+    bars(root);
+    $$('.hd-badge').forEach(b => anim(b, { scale: [1, 1.25, 1] }, { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }));
+  }
+  function bars(root) {
+    $$('.bar i', root).forEach(el => { const w = el.style.width; if (w) anim(el, { width: ['0%', w] }, { duration: 0.9, ease: [0.2, 0.8, 0.2, 1], delay: 0.15 }); });
+  }
+  function slide(el, dir) { if (ok() && el) anim(el, { opacity: [0, 1], x: [dir * 48, 0] }, spring({ stiffness: 320, damping: 32 })); }
+  function pop(el, from = 0.8) { if (ok() && el) anim(el, { scale: [from, 1] }, spring({ stiffness: 520, damping: 14 })); }
+  // ボトムシート
+  function sheetIn(sheet) {
+    if (!ok()) return false;
+    sheet.style.transition = 'none';
+    const h = sheet.offsetHeight || 500;
+    anim(sheet, { y: [h, 0] }, spring({ stiffness: 360, damping: 34 }));
+    const items = $$(':scope > *, :scope > form > *, :scope > .ev-detail > *', sheet).filter(el => el.tagName !== 'FORM' && !el.classList.contains('ev-detail')).slice(0, 16);
+    items.forEach((el, i) => anim(el, { opacity: [0, 1], y: [12, 0] }, spring({ delay: 0.06 + i * 0.03 })));
+    return true;
+  }
+  function sheetOut(sheet) {
+    if (!ok()) return null;
+    return anim(sheet, { y: sheet.offsetHeight || 500 }, { duration: 0.22, ease: [0.4, 0, 1, 1] });
+  }
+  // 詳細などの全画面
+  function overlayIn(el) {
+    if (!ok() || !el) return;
+    el.style.animation = 'none';
+    anim(el, { x: [60, 0], opacity: [0, 1] }, spring({ stiffness: 340, damping: 32 }));
+    const body = $('.o-body,#dBody', el) || el;
+    $$('.d-inner > *, .o-body > *', body).slice(0, 14).forEach((c, i) => anim(c, { opacity: [0, 1], y: [14, 0] }, spring({ delay: 0.08 + i * 0.04 })));
+  }
+  function overlayOut(el, done) {
+    if (!ok() || !el) { done(); return; }
+    const a = anim(el, { x: 60, opacity: 0 }, { duration: 0.2, ease: 'easeIn' });
+    (a ? a.then(done) : done());
+  }
+  // トースト
+  function toastIn(t) { if (ok()) anim(t, { y: [-24, 0], scale: [0.85, 1], opacity: [0, 1] }, spring({ stiffness: 500, damping: 22 })); }
+  function toastOut(t, done) { if (!ok()) return done(); const a = anim(t, { y: -16, opacity: 0 }, { duration: 0.2 }); a ? a.then(done) : done(); }
+  // 押したときの手応え
+  function press(el) { if (ok()) anim(el, { scale: 0.94 }, { duration: 0.1 }); }
+  function release(el) { if (ok()) anim(el, { scale: 1 }, spring({ stiffness: 600, damping: 15 })); }
+  // お祝い（ガーネットの紙吹雪）
+  function confetti(x, y) {
+    if (!ok()) return;
+    x = x == null ? innerWidth / 2 : x; y = y == null ? innerHeight * 0.45 : y;
+    const colors = ['#e0115f', '#ff8fa3', '#ffd977', '#ffffff', '#9b111e', '#4DA3FF', '#3DDC84'];
+    for (let k = 0; k < 46; k++) {
+      const p = document.createElement('i');
+      p.className = 'fx-conf';
+      p.style.left = x + 'px'; p.style.top = y + 'px';
+      p.style.background = colors[k % colors.length];
+      if (k % 3 === 0) p.style.borderRadius = '50%';
+      document.body.appendChild(p);
+      const ang = Math.random() * Math.PI * 2, v = 120 + Math.random() * 220;
+      anim(p, {
+        x: [0, Math.cos(ang) * v], y: [0, Math.sin(ang) * v - 120, Math.sin(ang) * v + 260],
+        rotate: [0, Math.random() * 720 - 360], opacity: [1, 1, 0], scale: [0.6, 1.1, 0.8],
+      }, { duration: 1.4 + Math.random() * 0.6, ease: [0.1, 0.7, 0.4, 1] })?.then(() => p.remove());
+    }
+    const gem = document.createElement('span');
+    gem.className = 'fx-gem'; gem.textContent = '💎';
+    gem.style.left = x + 'px'; gem.style.top = y + 'px';
+    document.body.appendChild(gem);
+    anim(gem, { scale: [0, 1.6, 1.2, 0], rotate: [-30, 10, 0, 0], opacity: [1, 1, 1, 0] }, { duration: 1.3, times: [0, 0.3, 0.75, 1] })?.then(() => gem.remove());
+  }
+  // ログイン画面
+  function login() {
+    if (!ok()) return;
+    const card = $('.login-card'); if (!card) return;
+    $$(':scope > *', card).forEach((el, i) => anim(el, { opacity: [0, 1], y: [24, 0] }, spring({ delay: 0.1 + i * 0.08 })));
+  }
+  return { ok, enter, bars, slide, pop, sheetIn, sheetOut, overlayIn, overlayOut, toastIn, toastOut, press, release, confetti, login };
+})();
+// 押したときの手応え（ボタン・カード全般）
+const PRESS_SEL = '.btn,.card,.pcard,.choice,.cell,.tg,.segtabs button,.mode-seg button,.tabbar button:not(.fab),.ev-card,.range,.rel,.off-day,.md-cell,.hd-btn,.me,.icon-btn';
+let pressed = null;
+document.addEventListener('pointerdown', e => { const el = e.target.closest(PRESS_SEL); if (!el || el.disabled) return; pressed = el; FX.press(el); }, { passive: true });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t => document.addEventListener(t, () => { if (pressed) { FX.release(pressed); pressed = null; } }, { passive: true }));
+
 // ---------- 通信 ----------
 async function api(action, data = {}) {
   const payload = Object.assign({ action, token: S.token }, S.adminToken ? { adminToken: S.adminToken } : {}, data);
@@ -191,8 +287,9 @@ function toast(msg, kind = '') {
   const t = $('#toast');
   t.textContent = msg;
   t.className = 'show ' + kind;
+  FX.toastIn(t);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = ''; }, 2800);
+  toastTimer = setTimeout(() => FX.toastOut(t, () => { t.className = ''; t.style.opacity = ''; t.style.transform = ''; }), 2800);
 }
 
 async function busy(btn, fn, label = '送信中…') {
@@ -239,6 +336,7 @@ function refreshAll() {
 }
 
 function showLogin() {
+  setTimeout(() => FX.login(), 50);
   $('#app').hidden = true; $('#detail').hidden = true; $('#proj').hidden = true; $('#admin').hidden = true; $('#login').hidden = false;
 }
 function showApp() {
@@ -322,6 +420,13 @@ function render() {
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
   const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
+  // 画面が変わったときだけ入場アニメーション（同じ画面の更新では動かさない）
+  const key = [S.view, S.calMode, S.worksMode, S.syncPid].join('|');
+  if (key !== S.fxKey) { S.fxKey = key; FX.enter($('#view')); window.scrollTo(0, 0); }
+  else if (S.view === 'calendar' && S.fxMonth && S.fxMonth !== S.month) FX.slide($('.cal'), S.month > S.fxMonth ? 1 : -1);
+  else if (S.view === 'calendar' && S.fxDay && S.fxDay !== S.day) FX.pop($('.cell.sel'), 0.82);
+  else if (S.view === 'calendar' && S.calMode === 'minutes' && S.fxMin && S.fxMin !== S.minMonth) FX.enter($('#view'));
+  S.fxMonth = S.month; S.fxDay = S.day; S.fxMin = S.minMonth;
 }
 
 // ---------- 空き時間の計算 ----------
@@ -798,14 +903,16 @@ function viewSettings() {
 function openProj(id, push = true) {
   if (!proj(id)) return toast('曲・アルバムが見つかりません', 'err');
   if (push) S.projStack.push(id); else S.projStack = [id];
+  const wasHidden = $('#proj').hidden;
   $('#proj').hidden = false;
   $('#pBody').scrollTop = 0;
+  if (wasHidden) requestAnimationFrame(() => FX.overlayIn($('#proj')));
   syncLock();
   renderProj();
 }
 function projBack() {
   S.projStack.pop();
-  if (!S.projStack.length) { $('#proj').hidden = true; syncLock(); render(); return; }
+  if (!S.projStack.length) { FX.overlayOut($('#proj'), () => { $('#proj').hidden = true; $('#proj').style.cssText = ''; syncLock(); }); render(); return; }
   renderProj();
 }
 
@@ -898,6 +1005,7 @@ async function moveStep(btn) {
 // ---------- タスク詳細 ----------
 async function openDetail(id) {
   S.detail = { id, task: S.tasks.find(t => t.id === id) || null, messages: null };
+  if ($('#detail').hidden) requestAnimationFrame(() => FX.overlayIn($('#detail')));
   $('#detail').hidden = false;
   syncLock();
   $('#dBody').scrollTop = 0;
@@ -911,8 +1019,7 @@ async function openDetail(id) {
 
 function closeDetail() {
   S.detail = null; stopPoll();
-  $('#detail').hidden = true;
-  syncLock();
+  FX.overlayOut($('#detail'), () => { $('#detail').hidden = true; $('#detail').style.cssText = ''; syncLock(); });
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   render();
   renderProj();
@@ -1481,11 +1588,13 @@ function openSheet(html) {
   w.hidden = false;
   $('#sheet').scrollTop = 0;
   const r = $('#sheet input[type=range]'); if (r) syncRange(r);
-  requestAnimationFrame(() => requestAnimationFrame(() => w.classList.add('open')));
+  requestAnimationFrame(() => requestAnimationFrame(() => { w.classList.add('open'); FX.sheetIn($('#sheet')); }));
 }
 function closeSheet() {
   const w = $('#sheetWrap');
   w.classList.remove('open');
+  const out = FX.sheetOut($('#sheet'));
+  if (out) { out.then(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; $('#sheet').style.transform = ''; } }); return; }
   setTimeout(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; } }, 250);
 }
 function syncRange(r) {
@@ -1547,6 +1656,7 @@ async function handleForm(kind, f, btn) {
       S.jacketDraft = null;
       closeSheet(); refreshAll(); loadJackets();
       toast(f.dataset.id ? '保存しました' : '作品を追加しました 💿');
+      if (!f.dataset.id) FX.confetti();
       return;
     }
     if (kind === 'availWeek') {
@@ -1565,7 +1675,7 @@ async function handleForm(kind, f, btn) {
     }
     if (kind === 'offday') {
       applyBoot(await api('saveOffday', { date: v('date'), note: v('note') }));
-      closeSheet(); refreshAll(); toast('全員休みの日を決めました 🚩');
+      closeSheet(); refreshAll(); toast('全員休みの日を決めました 🚩'); FX.confetti();
       return;
     }
     if (kind === 'memo') {
@@ -1620,6 +1730,7 @@ async function handleForm(kind, f, btn) {
     applyDetail(r, true);
     render(); renderProj();
     toast(DONE_MSG[kind]);
+    if (kind === 'complete') FX.confetti();
   });
 }
 
@@ -1747,7 +1858,7 @@ async function openSync(pid) {
   S.syncRows = buildSyncRows(pid);
   const first = S.syncRows.findIndex(r => r.s == null);
   S.syncCur = first < 0 ? Math.max(S.syncRows.length - 1, 0) : first;
-  render();
+  render(); FX.enter($('#view'));
 }
 let syncTimer = null;
 function saveSyncSoon() {
@@ -1857,7 +1968,7 @@ const mdPending = {}; let mdTimer = null;
 async function loadMandala() {
   try { const r = await api('getMandala'); S.mandala = r.cells || {}; S.mandalaLoaded = true; }
   catch (e) { toast(e.message, 'err'); }
-  if (S.view === 'mandala' && !mdTyping()) render();
+  if (S.view === 'mandala' && !mdTyping()) { const first = !$('#mdBoard'); render(); if (first) FX.enter($('#view')); }
 }
 const mdTyping = () => { const a = document.activeElement; return !!(a && a.dataset && a.dataset.mdk); };
 function mdWrite(key, patch, delay = 800) {
@@ -1961,6 +2072,7 @@ function mdRefresh(editor = true) {
 }
 function mdSelect(b, j) {
   S.mdSel = b; S.mdItem = b !== 4 && j !== undefined ? j : null; mdRefresh();
+  FX.pop($('.md-block.sel'), 0.9); FX.enter($('#mdEditor'));
   const el = S.mdItem !== null ? $('.md-detail') : $('#mdEditor'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 document.addEventListener('input', e => {
@@ -2139,10 +2251,10 @@ ${todo.length ? todo.map((i, k) => `${k + 1}. [${IDEA_LABEL[i.status]}] ${i.text
 
 // ---------- 隠し管理者画面 ----------
 function openAdmin() {
-  $('#admin').hidden = false; syncLock(); renderAdmin();
+  $('#admin').hidden = false; syncLock(); renderAdmin(); FX.overlayIn($('#admin'));
 }
 function closeAdmin() {
-  $('#admin').hidden = true; syncLock(); render();
+  FX.overlayOut($('#admin'), () => { $('#admin').hidden = true; $('#admin').style.cssText = ''; syncLock(); }); render();
 }
 function admRow(main, sub, btns) {
   return `<div class="arow"><div class="arow-main"><b>${main}</b>${sub ? `<small>${sub}</small>` : ''}</div><div class="arow-btns">${btns}</div></div>`;
@@ -2407,7 +2519,7 @@ document.addEventListener('click', e => {
     case 'mdStep': mdSelect((S.mdSel + Number(el.dataset.d) + 9) % 9); break;
     case 'mdItem': { const j = Number(el.dataset.j); mdSelect(S.mdSel, S.mdItem === j ? undefined : j); break; }
     case 'mdColor': mdWrite('t' + MD_POS.indexOf(S.mdSel), { color: Number(el.dataset.k) }, 0); mdRefresh(); break;
-    case 'mdSt': { const k = el.dataset.key, s2 = (mdGet(k).st + 1) % 3; mdWrite(k, { st: s2 }, 0); mdRefresh(); if (s2 === 2) toast('達成！ 💫'); break; }
+    case 'mdSt': { const k = el.dataset.key, s2 = (mdGet(k).st + 1) % 3; mdWrite(k, { st: s2 }, 0); mdRefresh(); if (s2 === 2) { toast('達成！ 💫'); FX.confetti(); } break; }
     case 'relOpen': openSheet(FORMS.releaseView(null, { id: el.dataset.id })); break;
     case 'minMonth': { const d = parseYmd(S.minMonth + '-01'); d.setMonth(d.getMonth() + Number(el.dataset.d)); S.minMonth = ymd(d).slice(0, 7); render(); break; }
     case 'minCopy': { const x = S.events.find(e => e.id === el.dataset.id); if (x) copyText(`${x.title}（${md(x.date)}）\n\n■議題\n${x.agenda || ''}\n\n■議事録\n${x.minutes}`, '議事録をコピーしました'); break; }

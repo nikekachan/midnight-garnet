@@ -706,3 +706,10 @@ form[data-form=event][data-kind=personal] .only-group{display:none}
 .rx-ring{width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:2px solid var(--garnet-hi);box-shadow:0 0 14px rgba(224,17,95,.7)}
 .rx-s{width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:radial-gradient(circle,#fff 0,#ff8fa3 45%,#e0115f 100%)}
 .react{transform-origin:center}
+
+/* アニメーション（Motion）用 */
+#toast{left:0;right:0;margin:0 auto;transform:none}
+#toast.show{transform:none}
+.card:active{transform:none}
+.fx-conf{position:fixed;width:8px;height:12px;margin:-6px 0 0 -4px;border-radius:2px;pointer-events:none;z-index:999;will-change:transform,opacity}
+.fx-gem{position:fixed;font-size:56px;line-height:1;width:56px;height:56px;margin:-28px 0 0 -28px;text-align:center;pointer-events:none;z-index:999;filter:drop-shadow(0 0 18px rgba(224,17,95,.9))}
