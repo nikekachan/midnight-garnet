@@ -750,3 +750,18 @@ html.lenis,html.lenis body{height:auto}
 .disco-hero b{display:block;font-family:'Cormorant Garamond',serif;font-size:24px;font-style:italic}
 .disco-hero small{font-size:11px;letter-spacing:.18em;color:var(--muted)}
 .login-card{isolation:isolate}
+
+/* SNSリンク */
+.sns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.sns-btn{display:flex;align-items:center;gap:7px;padding:6px 12px 6px 6px;border-radius:99px;background:var(--surface2);border:1px solid var(--line);color:var(--text);text-decoration:none;font-size:12px;font-weight:700}
+.sns-btn img,.sns-btn b{width:26px;height:26px;border-radius:50%;padding:5px;background:var(--b);display:grid;place-items:center;font-size:13px}
+.sns-btn.ring img{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.sns-btn.edit b{background:var(--surface);border:1px dashed var(--line)}
+.disco-hero .sns{margin-top:6px}
+.disco-hero .sns-btn{padding:4px;border:0;background:transparent}
+.disco-hero .sns-btn span,.disco-hero .sns-btn.edit{display:none}
+.link-list{display:grid;gap:8px;margin-bottom:6px}
+.link-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)}
+.link-row small{display:block;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.link-row .btn{width:auto;margin:0}
+.sns-dot{width:14px;height:14px;border-radius:50%;background:var(--b)}

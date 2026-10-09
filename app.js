@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [],
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -368,7 +368,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -806,7 +806,7 @@ async function loadJackets() {
 function viewDisco() {
   const list = S.releases.slice().sort((a, b) => String(b.releaseDate || b.createdAt).localeCompare(String(a.releaseDate || a.createdAt)));
   if (list.some(r => r.jacketAt && !jacketSrc(r))) setTimeout(loadJackets, 0);
-  return `<div class="disco-hero"><div class="gem3d" data-gem3d></div><div><b>Midnight Garnet<span>💫</span></b><small>DISCOGRAPHY · ${list.length} WORKS</small></div></div>
+  return `<div class="disco-hero"><div class="gem3d" data-gem3d></div><div><b>Midnight Garnet<span>💫</span></b><small>DISCOGRAPHY · ${list.length} WORKS</small>${snsBar(false)}</div></div>
   <button class="btn ghost sm" data-act="form" data-form="release" style="margin-bottom:12px">＋ 作品を追加</button>
   ${list.length ? `<div class="disco">${list.map(r => {
     const src = jacketSrc(r);
@@ -936,6 +936,7 @@ function viewSettings() {
   const push = pushState();
   return `
   <h2 class="page-title">設定</h2>
+  <div class="panel"><h3>Midnight Garnet の SNS</h3>${snsBar(true)}</div>
   <div class="panel">
     <h3><span class="who" style="--c:${mem(S.me.id).color}">${esc(S.me.name)}</span></h3>
     <p class="muted small">ログイン中です。この端末ではログアウトするまでログイン状態が続きます。</p>
@@ -1518,6 +1519,19 @@ const FORMS = {
         ${canDel ? `<button class="btn danger sm" data-act="confirmDel" data-type="release" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button>` : '<span></span>'}
       </div>`;
   },
+  links() {
+    const list = S.links.slice().sort((a, b) => Number(a.order) - Number(b.order));
+    return `${sheetHead('SNSリンク')}
+      ${list.length ? `<div class="link-list">${list.map(l => `<div class="link-row"><span class="sns-dot" style="--b:${snsOf(l.platform).color}"></span><div><b>${esc(l.label || snsOf(l.platform).name)}</b><small>${esc(l.url)}</small></div>
+        <button class="btn danger sm" data-act="linkDel" data-id="${esc(l.id)}">削除</button></div>`).join('')}</div>` : ''}
+      <form data-form="link">
+        <h3 class="sec">追加する</h3>
+        <label>サービス<select name="platform">${Object.keys(SNS).map(k => `<option value="${k}">${SNS[k].name === 'リンク' ? 'その他' : SNS[k].name}</option>`).join('')}</select></label>
+        <label>URL<input name="url" inputmode="url" required placeholder="https://www.youtube.com/@…"></label>
+        <label>表示名（空ならサービス名）<input name="label" maxlength="30" placeholder="例：MV チャンネル"></label>
+        <button class="btn gem" type="submit">追加する</button>
+      </form>`;
+  },
   offday(_, o = {}) {
     const x = o.id ? S.offdays.find(d => d.id === o.id) : null;
     return `<form data-form="offday">${sheetHead('🚩 全員休みの日を追加')}
@@ -1721,6 +1735,11 @@ async function handleForm(kind, f, btn) {
       if (days.length) applyBoot(await api('saveAvailWeek', { days }));
       S.weekEdit = null;
       closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
+      return;
+    }
+    if (kind === 'link') {
+      applyBoot(await api('saveLink', { platform: v('platform'), url: v('url'), label: v('label') }));
+      openSheet(FORMS.links()); render(); toast('SNSを追加しました 🔗');
       return;
     }
     if (kind === 'memoReply') {
@@ -2147,6 +2166,52 @@ document.addEventListener('keydown', e => {
 });
 setInterval(() => { if (S.view === 'mandala' && document.visibilityState === 'visible' && !mdTyping() && !Object.keys(mdPending).length && S.me) loadMandala(); }, 20000);
 
+// ---------- 通知音（アプリを開いているとき） ----------
+let audioCtx = null;
+// iPhoneは、一度画面を触ったあとでないと音を出せないので、最初のタップで準備しておく
+document.addEventListener('pointerdown', () => {
+  if (audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); const b = audioCtx.createBuffer(1, 1, 22050); const s = audioCtx.createBufferSource(); s.buffer = b; s.connect(audioCtx.destination); s.start(0); } catch (e) {}
+}, { once: false, passive: true });
+/** ガーネットっぽい、きらっとした2音のチャイム */
+function chime() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    [[1318.5, 0], [1975.5, 0.11]].forEach(([f, d]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d);
+      g.gain.exponentialRampToValueAtTime(0.18, t + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.55);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t + d); o.stop(t + d + 0.6);
+    });
+  } catch (e) {}
+}
+
+// ---------- SNSリンク ----------
+const SNS = {
+  youtube: { name: 'YouTube', color: '#FF0033', icon: 'youtube' },
+  instagram: { name: 'Instagram', color: 'linear-gradient(45deg,#FEDA75,#FA7E1E,#D62976,#962FBF,#4F5BD5)', icon: 'instagram' },
+  tiktok: { name: 'TikTok', color: '#000000', icon: 'tiktok', ring: true },
+  x: { name: 'X', color: '#000000', icon: 'x', ring: true },
+  spotify: { name: 'Spotify', color: '#1DB954', icon: 'spotify' },
+  applemusic: { name: 'Apple Music', color: 'linear-gradient(180deg,#FA5C74,#FA233B)', icon: 'applemusic' },
+  line: { name: 'LINE', color: '#06C755', icon: 'line' },
+  other: { name: 'リンク', color: '#3a2a30', icon: '' },
+};
+const snsOf = p => SNS[p] || SNS.other;
+function snsBar(withEdit) {
+  const list = S.links.slice().sort((a, b) => Number(a.order) - Number(b.order));
+  return `<div class="sns">${list.map(l => {
+    const s = snsOf(l.platform);
+    return `<a class="sns-btn ${s.ring ? 'ring' : ''}" href="${esc(l.url)}" target="_blank" rel="noopener" style="--b:${s.color}" title="${esc(l.label || s.name)}">
+      ${s.icon ? `<img src="https://cdn.simpleicons.org/${s.icon}/ffffff" alt="" loading="lazy">` : '<b>🔗</b>'}<span>${esc(l.label || s.name)}</span></a>`;
+  }).join('')}${withEdit ? `<button class="sns-btn edit" data-act="form" data-form="links"><b>✎</b><span>${list.length ? '編集' : 'SNSを登録'}</span></button>` : ''}</div>
+  ${!list.length && withEdit ? '<p class="hint">まだ登録されていません。「SNSを登録」から YouTube・Instagram・TikTok などのURLを入れてください。</p>' : ''}`;
+}
+
 // ---------- 掲示板・メモ ----------
 // 返信・リアクション・既読
 const MEMO_REACTIONS = ['👍', '❤️', '😂', '🔥', '👀', '🙏'];
@@ -2286,7 +2351,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / links / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -2422,6 +2487,13 @@ function initPush() {
       linkPush();
       OneSignal.Notifications.addEventListener('permissionChange', () => { if (S.view === 'settings') render(); });
       OneSignal.User.PushSubscription.addEventListener('change', () => { if (S.view === 'settings') render(); });
+      // アプリを開いている間に通知が来たら、音を鳴らして最新の内容に更新
+      OneSignal.Notifications.addEventListener('foregroundWillDisplay', ev => {
+        chime();
+        const n = ev && ev.notification;
+        if (n) toast((n.title ? n.title + '：' : '') + (n.body || ''));
+        load().then(() => { render(); renderProj(); }).catch(() => {});
+      });
     } catch (e) { console.warn('OneSignal', e); S.osErr = String((e && e.message) || e); if (S.view === 'settings') render(); }
   });
   S.osErr = 'SDK読込中';
@@ -2549,6 +2621,7 @@ document.addEventListener('click', e => {
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
     case 'memoReact': reactMemo(el); break;
+    case 'linkDel': busy(el, async () => { applyBoot(await api('deleteLink', { id: el.dataset.id })); openSheet(FORMS.links()); render(); toast('削除しました'); }, '削除中…'); break;
     case 'offOpen': openSheet(FORMS.offView(null, { id: el.dataset.id })); break;
     case 'worksMode': S.worksMode = el.dataset.m; render(); break;
     case 'syncOpen': openSync(el.dataset.id); break;
@@ -2746,7 +2819,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
-  const memoReplies = [], memoMarks = [];
+  const memoReplies = [], memoMarks = [], links = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -2770,7 +2843,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links) };
   };
 
   const H = {
@@ -2904,6 +2977,8 @@ const Mock = (() => {
       return boot(m);
     },
     readMemos(r, m) { (r.ids || []).forEach(id => { const k = memoMarks.find(x => x.memoId === id && x.memberId === m.id && x.kind === 'read'); if (k) k.at = now(); else memoMarks.push({ memoId: id, memberId: m.id, kind: 'read', value: '', at: now() }); }); return { ok: true }; },
+    saveLink(r, m) { links.push({ id: 'l' + (++seq), platform: r.platform, url: r.url, label: r.label || '', order: String(links.length + 1) }); return boot(m); },
+    deleteLink(r, m) { const i = links.findIndex(x => x.id === r.id); if (i >= 0) links.splice(i, 1); return boot(m); },
     saveOffday(r, m) { const x = offdays.find(o => o.date === r.date); if (x) x.note = r.note || ''; else offdays.push({ id: 'o' + (++seq), date: date(r.date), note: r.note || '', createdBy: m.id, createdAt: now() }); return boot(m); },
     deleteOffday(r, m) { const i = offdays.findIndex(o => o.id === r.id); if (i >= 0) offdays.splice(i, 1); return boot(m); },
     saveMemo(r, m) {
