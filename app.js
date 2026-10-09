@@ -1087,7 +1087,7 @@ function pchatMsgsHtml(pid) {
     const tag = m.taskTitle && m.taskId !== pid ? `<span class="m-tag">#${esc(m.taskTitle)}</span>` : '';
     if (m.type === 'chat') {
       const a = mem(m.author), mine = m.author === S.me.id;
-      return `<div class="m ${mine ? 'mine' : ''}">${mine ? '' : `<div class="m-name" style="color:${a.color}">${esc(a.name)}</div>`}<div class="bubble">${linkify(m.text)}</div><time>${tag}${timeLabel(m.createdAt)}</time></div>`;
+      return `<div class="m ${mine ? 'mine' : ''}" style="--c:${a.color}">${mine ? '' : `<div class="m-name" style="color:${a.color}">${esc(a.name)}</div>`}<div class="bubble">${linkify(m.text)}</div><time>${tag}${timeLabel(m.createdAt)}</time></div>`;
     }
     // 進捗・完了・遅延などは、チャットの流れの中に小さく薄く差し込む
     const a = mem(m.author);
@@ -1334,7 +1334,7 @@ function msgHtml(m) {
     return `<div class="m-sys ${m.type}">${linkify(m.text)}${time}</div>`;
   }
   if (m.type === 'chat') {
-    return `<div class="m ${mine ? 'mine' : ''}">${mine ? '' : `<div class="m-name" style="color:${a.color}">${esc(a.name)}</div>`}<div class="bubble">${linkify(m.text)}</div>${time}</div>`;
+    return `<div class="m ${mine ? 'mine' : ''}" style="--c:${a.color}">${mine ? '' : `<div class="m-name" style="color:${a.color}">${esc(a.name)}</div>`}<div class="bubble">${linkify(m.text)}</div>${time}</div>`;
   }
   const head = { progress: `進捗 ${esc(m.progress)}%`, done: '✅ 完了報告', delay: '⏰ 遅延の報告', failed: '⚠️ 完了できない報告' }[m.type] || '';
   return `<div class="m-card t-${m.type}">
@@ -2511,7 +2511,7 @@ function viewBoard() {
       </div>
       <div class="replies chat">
         ${reps.length ? `<div class="r-head">💬 返信 ${reps.length}件</div>` : ''}
-        ${reps.map(r => { const mine = r.author === S.me.id; return `<div class="m ${mine ? 'mine' : ''}">
+        ${reps.map(r => { const mine = r.author === S.me.id; return `<div class="m ${mine ? 'mine' : ''}" style="--c:${mem(r.author).color}">
           ${mine ? '' : `<div class="m-name" style="color:${mem(r.author).color}">${esc(mem(r.author).name)}</div>`}
           <div class="bubble">${linkify(r.text)}</div>
           <time>${timeLabel(r.createdAt)}${mine || isAdminMode() ? ` · <button class="reply-del" data-act="confirmDel" data-type="reply" data-id="${esc(r.id)}" data-label="返信">削除</button>` : ''}</time>
