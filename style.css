@@ -811,3 +811,29 @@ html.lenis,html.lenis body{height:auto}
 .m-note.t-done{opacity:.9;color:var(--ok)}
 .m-note.t-failed,.m-note.t-delay{color:#ffb3c4}
 .pchat-form{position:sticky;bottom:0;padding:8px 0 calc(4px + var(--safe-b));background:linear-gradient(180deg,transparent,var(--bg) 30%)}
+
+/* 歌詞：区切りごとの担当・確認 */
+.ly-panel{margin:12px 0;padding:12px;border-radius:var(--r);border:1px solid rgba(224,17,95,.4);background:rgba(155,17,30,.08)}
+.ly-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.ly-top span{font-size:12px;font-weight:700;color:var(--ok)}
+.ly-part{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--c)}
+.ly-part.st-ok{border-color:rgba(126,226,184,.45);border-left-color:var(--ok)}
+.ly-part.st-r{border-color:rgba(255,107,133,.5)}
+.ly-part.st-s{opacity:.55}
+.lp-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lp-sec{font-weight:700;font-size:14px}
+.lp-sec time{color:var(--muted);font-weight:400;margin-right:6px;font-size:12px}
+.lp-st.w{border-color:#ffd977;color:#ffd977}
+.lp-st.r{border-color:var(--late);color:var(--late)}
+.lp-st.ok{border-color:var(--ok);color:var(--ok)}
+.lp-writer{display:flex;align-items:center;gap:8px;margin:8px 0 6px;font-size:12px}
+.lp-writer select{width:auto;margin:0;padding:6px 10px;font-size:14px}
+.lp-text{margin:6px 0 0;font-size:15px}
+.lp-view{margin:6px 0 0;padding:8px 10px;border-radius:8px;background:var(--surface2);font-family:inherit;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.lp-note{margin:6px 0 0;font-size:12px;color:#ffb3c4}
+.lp-checks{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.lp-chk{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.lp-chk.on{border-color:var(--c);color:var(--c);font-weight:700}
+.lp-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.lp-btns .btn{width:auto;margin:0}
+.lp-skip{margin-left:auto!important;opacity:.7}

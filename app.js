@@ -1186,8 +1186,12 @@ function applyDetail(r, toBottom) {
   if (!S.detail) return;
   S.detail.task = r.task;
   S.detail.messages = r.messages;
+  S.detail.parts = r.lyricParts || null;
   upsertTask(r.task);
   S.chat[r.task.id] = { n: r.messages.filter(m => m.type === 'chat').length };
+  // 歌詞を書いている途中は、自動更新で消えないように描き直さない
+  const a = document.activeElement;
+  if (!toBottom && a && a.closest && a.closest('#lyPanel') && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
   renderDetail(toBottom);
 }
 
@@ -1214,6 +1218,9 @@ function renderDetail(toBottom) {
   if (t.status === 'open' && canAct(t) && t.kind === 'shift') {
     acts.push(`<button class="btn gem sm wide" data-act="form" data-form="shift" data-month="${esc((subOf(t) || {}).month || '')}">シフト表の画像を提出</button>`);
     acts.push('<button class="btn danger sm wide" data-act="sheet" data-form="issue">遅延の報告</button>');
+  } else if (t.status === 'open' && t.kind === 'lyrics') {
+    // 歌詞は、全部の区切りが全員OKになると自動で完了する
+    acts.push('<button class="btn danger sm wide" data-act="sheet" data-form="issue">遅延・中止の報告</button>');
   } else if (t.status === 'open' && canAct(t)) {
     acts.push('<button class="btn gem sm wide" data-act="sheet" data-form="progress">進捗を報告する</button>');
     acts.push('<button class="btn outline sm" data-act="sheet" data-form="complete">✓ 完了報告</button>');
@@ -1251,7 +1258,8 @@ function renderDetail(toBottom) {
         <div><dt>納期</dt><dd class="${late ? 'late-t' : ''}">${md(t.deadline)}${t.status === 'open' ? `<small>${dueText(t)}</small>` : ''}</dd></div>
       </dl>
     </div>
-    ${t.kind && t.kind !== 'shift' && t.status === 'open' ? `<p class="wait kind-note">完了するときに<b>${t.kind === 'composition' ? '作曲シート（仮タイトル・テイスト・時間とパート）' : '歌詞（作曲シートの時間ごと）'}</b>を提出します</p>` : ''}
+    ${t.kind === 'lyrics' && t.status === 'open' ? lyricPanel(t, d.parts) : ''}
+    ${t.kind && t.kind !== 'shift' && t.kind !== 'lyrics' && t.status === 'open' ? `<p class="wait kind-note">完了するときに<b>${t.kind === 'composition' ? '作曲シート（仮タイトル・テイスト・時間とパート）' : '歌詞（作曲シートの時間ごと）'}</b>を提出します</p>` : ''}
     ${blocker ? `<p class="wait">前のステップ「${esc(blocker.title)}」（${esc(namesOf(ids(blocker)))}）が終わるのを待っています</p>` : ''}
     ${t.content ? `<div class="d-content">${linkify(t.content)}</div>` : ''}
     <div class="d-progress">
@@ -1267,6 +1275,51 @@ function renderDetail(toBottom) {
   </div>`;
   body.dataset.count = count;
   if (toBottom || (prev && count !== prev && nearBottom)) body.scrollTop = body.scrollHeight;
+}
+
+// ---------- 歌詞：区切りごとの担当・確認 ----------
+const LY_ST = { '': ['未入力', 'u'], review: ['確認待ち', 'w'], revise: ['修正のお願い', 'r'], ok: ['全員OK', 'ok'], skip: ['歌詞なし', 's'] };
+function lyricPanel(t, parts) {
+  if (!parts) return '<div id="lyPanel" class="ly-panel"><div class="lt-load" data-lottie="lottie/loader.json"></div></div>';
+  const live = parts.filter(x => x.status !== 'skip');
+  const ok = live.filter(x => x.status === 'ok').length;
+  const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.writer !== S.me.id && x.status === 'review' && !splitIds(x.approvals).includes(S.me.id))).length;
+  return `<div id="lyPanel" class="ly-panel">
+    <div class="ly-top"><b>✍️ 歌詞の担当と確認</b><span>OK ${ok}/${live.length}</span></div>
+    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、ほかの2人が確認して「OK」を押します。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
+    ${parts.map(x => {
+      const w = mem(x.writer), mine = x.writer === S.me.id, [stLabel, stCls] = LY_ST[x.status] || LY_ST[''];
+      const ap = splitIds(x.approvals);
+      const reviewers = S.members.filter(m => m.id !== x.writer);
+      const canReview = !mine && x.status === 'review' && !ap.includes(S.me.id);
+      return `<div class="ly-part st-${stCls}" style="--c:${w.color}">
+        <div class="lp-head">
+          <span class="lp-sec">${x.time ? `<time>${esc(x.time)}〜</time>` : ''}${esc(x.label || '歌詞')}</span>
+          <span class="badge lp-st ${stCls}">${stLabel}</span>
+        </div>
+        <label class="lp-writer">担当<select data-change="lyWriter" data-idx="${esc(x.idx)}">${S.members.map(m => `<option value="${m.id}" ${m.id === x.writer ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+        ${x.status === 'skip' ? '<p class="muted small" style="margin:6px 0">この区切りは歌詞なし（間奏など）</p>'
+          : mine ? `<textarea class="lp-text" data-idx="${esc(x.idx)}" rows="4" maxlength="3000" placeholder="この区切りの歌詞">${esc(x.text)}</textarea>`
+          : x.text ? `<pre class="lp-view">${esc(x.text)}</pre>` : `<p class="muted small" style="margin:6px 0">${esc(w.name)}さんが書くのを待っています</p>`}
+        ${x.status === 'revise' && x.note ? `<p class="lp-note">✎ 修正のお願い：${esc(x.note)}</p>` : ''}
+        ${x.status !== 'skip' && x.text ? `<div class="lp-checks">${reviewers.map(m => `<span class="lp-chk ${ap.includes(m.id) ? 'on' : ''}" style="--c:${m.color}">${ap.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>` : ''}
+        <div class="lp-btns">
+          ${mine && x.status !== 'skip' ? `<button class="btn gem sm" data-act="lySave" data-idx="${esc(x.idx)}">${x.status === 'ok' ? '書き直して再確認' : '保存して確認に出す'}</button>` : ''}
+          ${canReview ? `<button class="btn outline sm" data-act="lyOk" data-idx="${esc(x.idx)}">✓ OK</button><button class="btn danger sm" data-act="lyRevise" data-idx="${esc(x.idx)}">✎ 修正をお願い</button>` : ''}
+          <button class="btn ghost sm lp-skip" data-act="lySkip" data-idx="${esc(x.idx)}" data-skip="${x.status === 'skip' ? '0' : '1'}">${x.status === 'skip' ? '歌詞ありに戻す' : '歌詞なし'}</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+async function lyCall(action, data, btn, msg) {
+  await busy(btn, async () => {
+    const r = await api(action, Object.assign({ taskId: S.detail.id }, data));
+    const wasOpen = S.detail.task && S.detail.task.status === 'open';
+    applyDetail(r, false);
+    if (msg) toast(msg);
+    if (wasOpen && r.task.status === 'done') { toast('🎉 歌詞が完成しました！'); FX.confetti(); if (window.MGX) MGX.checkBurst(); render(); renderProj(); }
+  }, '送信中…');
 }
 
 function msgHtml(m) {
@@ -1829,6 +1882,11 @@ async function handleForm(kind, f, btn) {
       if (days.length) applyBoot(await api('saveAvailWeek', { days }));
       S.weekEdit = null;
       closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
+      return;
+    }
+    if (kind === 'lyRevise') {
+      closeSheet();
+      await lyCall('reviewLyricPart', { idx: f.dataset.idx, ok: false, note: v('note') }, null, '修正をお願いしました ✎');
       return;
     }
     if (kind === 'projChat') {
@@ -2758,6 +2816,10 @@ document.addEventListener('click', e => {
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
     case 'memoReact': reactMemo(el); break;
+    case 'lySave': { const ta = $(`#lyPanel .lp-text[data-idx="${el.dataset.idx}"]`); lyCall('saveLyricPart', { idx: el.dataset.idx, text: ta ? ta.value : '' }, el, '確認に出しました 👀'); break; }
+    case 'lyOk': lyCall('reviewLyricPart', { idx: el.dataset.idx, ok: true }, el, 'OKしました ✓'); break;
+    case 'lyRevise': openSheet(`<form data-form="lyRevise" data-idx="${esc(el.dataset.idx)}">${sheetHead('修正のお願い')}<label>どこをどう直してほしいか<textarea name="note" rows="3" maxlength="500" required placeholder="例：2行目の言葉をもっと明るく"></textarea></label><button class="btn danger" type="submit">担当にお願いする</button></form>`); break;
+    case 'lySkip': lyCall('skipLyricPart', { idx: el.dataset.idx, skip: el.dataset.skip === '1' }, el); break;
     case 'ideaDel': {
       const evId = (S.eventIdeas.find(i => i.id === el.dataset.id) || {}).eventId;
       busy(el, async () => {
@@ -2826,6 +2888,9 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('[data-change=lyWriter]')) {
+    lyCall('setLyricWriter', { idx: e.target.dataset.idx, writer: e.target.value }, null, '担当を変更しました');
+  }
   if (e.target.matches('[data-change=syncFile]')) {
     const file = e.target.files[0]; if (!file) return;
     if (syncAudio.src) URL.revokeObjectURL(syncAudio.src);
