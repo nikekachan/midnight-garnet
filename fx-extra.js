@@ -131,14 +131,16 @@ function makeGem(host) {
   // ブリリアントカット風：上が平らで下がとがった多面体
   const geo = new THREE.CylinderGeometry(0.95, 1.25, 0.45, 10, 1).toNonIndexed();
   const pav = new THREE.ConeGeometry(1.25, 1.35, 10, 1).toNonIndexed();
+  const pavEdges = new THREE.EdgesGeometry(new THREE.ConeGeometry(1.25, 1.35, 10, 1));
   const mat = new THREE.MeshPhysicalMaterial({ color: 0x9b111e, emissive: 0x2a0008, metalness: 0.15, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, flatShading: true, transparent: true, opacity: 0.95 });
   const gem = new THREE.Group();
   const top = new THREE.Mesh(geo, mat); top.position.y = 0.225;
   const bottom = new THREE.Mesh(pav, mat); bottom.rotation.x = Math.PI; bottom.position.y = -0.675;
   gem.add(top, bottom);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.95, 1.25, 0.45, 10, 1)), new THREE.LineBasicMaterial({ color: 0xff8fa3, transparent: true, opacity: 0.35 }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.95, 1.25, 0.45, 10, 1)), new THREE.LineBasicMaterial({ color: 0xffb3c4, transparent: true, opacity: 0.6 }));
   edges.position.y = 0.225; gem.add(edges);
-  gem.rotation.x = 0.35;
+  const pe = new THREE.LineSegments(pavEdges, edges.material); pe.rotation.x = Math.PI; pe.position.y = -0.675; gem.add(pe);
+  gem.rotation.x = 0.35; gem.position.y = 0.25;
   scene.add(gem);
   scene.add(new THREE.AmbientLight(0xffffff, 0.35));
   const l1 = new THREE.PointLight(0xff4d6d, 30, 20); l1.position.set(2.5, 2, 3); scene.add(l1);
@@ -149,7 +151,7 @@ function makeGem(host) {
     if (!document.body.contains(host)) { renderer.dispose(); return; } // 画面が変わったら止める
     const t = (now - t0) / 1000;
     gem.rotation.y = t * 0.6;
-    gem.position.y = Math.sin(t * 1.4) * 0.08;
+    gem.position.y = 0.25 + Math.sin(t * 1.4) * 0.08;
     l1.position.x = Math.sin(t * 0.8) * 3;
     renderer.render(scene, cam);
     requestAnimationFrame(loop);

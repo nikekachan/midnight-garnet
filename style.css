@@ -744,7 +744,7 @@ html.lenis,html.lenis body{height:auto}
 .gem3d{position:relative}
 .gem3d canvas{display:block;width:100%!important;height:100%!important}
 .login-card{position:relative}
-.login-gem3d{position:absolute;left:50%;top:-40px;width:260px;height:260px;margin-left:-130px;z-index:-1;opacity:.85;pointer-events:none}
+.login-gem3d{position:absolute;left:50%;top:-82px;width:280px;height:280px;margin-left:-140px;z-index:-1;opacity:.8;pointer-events:none}
 .disco-hero{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:10px 14px;border-radius:var(--r);background:radial-gradient(120% 140% at 0 50%,rgba(155,17,30,.35),transparent 60%),var(--surface);border:1px solid var(--line)}
 .disco-hero .gem3d{width:96px;height:96px;flex:none}
 .disco-hero b{display:block;font-family:'Cormorant Garamond',serif;font-size:24px;font-style:italic}
