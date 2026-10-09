@@ -553,9 +553,8 @@ function viewCalendar() {
   return `
   <div class="segtabs three">${[['month', 'カレンダー'], ['free', '空き時間・共通'], ['minutes', '議事録']].map(([k, l]) =>
     `<button class="${S.calMode === k ? 'on' : ''}" data-act="calMode" data-m="${k}">${l}</button>`).join('')}</div>
-  ${offBanner()}
-  ${S.calMode === 'month' ? meetupPanel() : ''}
-  ${S.calMode === 'minutes' ? '' : shiftBanner()}
+  ${S.calMode === 'month' ? '' : offBanner()}
+  ${S.calMode === 'free' ? shiftBanner() : ''}
   ${S.calMode === 'free' ? viewFree() : S.calMode === 'minutes' ? viewMinutes() : viewMonth()}`;
 }
 
@@ -660,6 +659,11 @@ function viewMonth() {
   </div>
   <div class="legend chip-legend"><span><b class="chip ev" style="--g:#6b5d63">予定</b></span><span><b class="chip sh" style="--c:#6b5d63">シフト</b></span><span><b class="chip tk" style="--c:#6b5d63">タスク</b></span></div>
   <div class="cal">${[1, 2, 3, 4, 5, 6, 0].map(i => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${WD[i]}</div>`).join('')}${cells}</div>
+  <div class="home-below">
+    ${meetupPanel()}
+    ${offBanner()}
+    ${shiftBanner()}
+  </div>
 
   <div class="day-head">
     <h3>${md(S.day)}</h3>
