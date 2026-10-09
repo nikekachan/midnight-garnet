@@ -176,10 +176,10 @@ const FX = (() => {
   function enter(root) {
     if (!ok() || !root) return;
     const all = $$(ENTER, root);
-    const top = all.filter(el => !all.some(o => o !== el && o.contains(el))).slice(0, 28);
+    // 画面の外（下のほう）の要素は GSAP の ScrollTrigger がスクロールに合わせて出すので、ここでは扱わない
+    const top = all.filter(el => !all.some(o => o !== el && o.contains(el)) && el.getBoundingClientRect().top < innerHeight).slice(0, 28);
     top.forEach((el, i) => anim(el, { opacity: [0, 1], y: [16, 0] }, spring({ delay: i * 0.035 })));
     // 中の小さな要素も少し遅れて
-    $$('.rel', root).slice(0, 24).forEach((el, i) => anim(el, { opacity: [0, 1], scale: [0.85, 1] }, spring({ delay: 0.12 + i * 0.05, stiffness: 300, damping: 20 })));
     $$('.chip', root).slice(0, 140).forEach((el, i) => anim(el, { opacity: [0, 1], x: [-6, 0] }, { duration: 0.3, delay: 0.15 + (i % 40) * 0.008 }));
     $$('.dia', root).slice(0, 80).forEach((el, i) => anim(el, { scale: [0, 1] }, spring({ delay: 0.2 + i * 0.03, stiffness: 500, damping: 14 })));
     bars(root);
@@ -456,7 +456,9 @@ async function logout() {
   signOutLocal();
 }
 function syncLock() {
-  document.body.classList.toggle('lock', !$('#detail').hidden || !$('#proj').hidden || !$('#admin').hidden);
+  const locked = !$('#detail').hidden || !$('#proj').hidden || !$('#admin').hidden;
+  document.body.classList.toggle('lock', locked);
+  if (window.MGX) MGX.lock(locked || !$('#sheetWrap').hidden);
 }
 
 // ---------- メイン画面 ----------
@@ -468,11 +470,12 @@ function render() {
   $('#view').innerHTML = v();
   // 画面が変わったときだけ入場アニメーション（同じ画面の更新では動かさない）
   const key = [S.view, S.calMode, S.worksMode, S.syncPid].join('|');
-  if (key !== S.fxKey) { S.fxKey = key; FX.enter($('#view')); window.scrollTo(0, 0); }
+  if (key !== S.fxKey) { S.fxKey = key; FX.enter($('#view')); window.MGX ? MGX.toTop(true) : window.scrollTo(0, 0); }
   else if (S.view === 'calendar' && S.fxMonth && S.fxMonth !== S.month) FX.slide($('.cal'), S.month > S.fxMonth ? 1 : -1);
   else if (S.view === 'calendar' && S.fxDay && S.fxDay !== S.day) FX.pop($('.cell.sel'), 0.82);
   else if (S.view === 'calendar' && S.calMode === 'minutes' && S.fxMin && S.fxMin !== S.minMonth) FX.enter($('#view'));
   S.fxMonth = S.month; S.fxDay = S.day; S.fxMin = S.minMonth;
+  if (window.MGX) MGX.afterRender($('#view'));
 }
 
 // ---------- 空き時間の計算 ----------
@@ -505,6 +508,10 @@ function stateArr(mid, date, slots) {
 }
 const personalOn = (mid, date) => S.events.filter(e => e.kind === 'personal' && e.createdBy === mid && e.date === date);
 const KIND_ICON = { meeting: '🗣 ', personal: '🔒 ' };
+/** 会議のときだけ出す欄（DOMごと出し入れするので Auto Animate でなめらかに開閉） */
+const kindFields = (kind, agenda, minutes) => kind !== 'meeting' ? '' : `
+  <label>何を議論するか（議題）<textarea name="agenda" rows="3" maxlength="3000" placeholder="例：・新曲のリリース日&#10;・MVの方向性">${esc(agenda || '')}</textarea></label>
+  <label>議事録<textarea name="minutes" rows="8" maxlength="30000" placeholder="会議のあとに、決まったこと・話したことを書いてください">${esc(minutes || '')}</textarea></label>`;
 function rangesOf(arr, pred) {
   const out = []; let st = -1;
   for (let i = SLOT0; i <= 48; i++) {
@@ -799,7 +806,8 @@ async function loadJackets() {
 function viewDisco() {
   const list = S.releases.slice().sort((a, b) => String(b.releaseDate || b.createdAt).localeCompare(String(a.releaseDate || a.createdAt)));
   if (list.some(r => r.jacketAt && !jacketSrc(r))) setTimeout(loadJackets, 0);
-  return `<button class="btn ghost sm" data-act="form" data-form="release" style="margin-bottom:12px">＋ 作品を追加</button>
+  return `<div class="disco-hero"><div class="gem3d" data-gem3d></div><div><b>Midnight Garnet<span>💫</span></b><small>DISCOGRAPHY · ${list.length} WORKS</small></div></div>
+  <button class="btn ghost sm" data-act="form" data-form="release" style="margin-bottom:12px">＋ 作品を追加</button>
   ${list.length ? `<div class="disco">${list.map(r => {
     const src = jacketSrc(r);
     return `<button class="rel" data-act="relOpen" data-id="${esc(r.id)}">
@@ -1095,7 +1103,7 @@ function renderDetail(toBottom) {
   const d = S.detail; if (!d) return;
   const body = $('#dBody');
   const t = d.task;
-  if (!t) { $('#dTitle').textContent = '読み込み中…'; body.innerHTML = '<div class="loading"><i></i></div>'; return; }
+  if (!t) { $('#dTitle').textContent = '読み込み中…'; body.innerHTML = '<div class="lt-load" data-lottie="lottie/loader.json"></div>'; return; }
 
   const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
   const prev = body.dataset.count;
@@ -1370,8 +1378,7 @@ const FORMS = {
         <label>終了<input type="time" name="end" required step="300" value="${esc(e ? e.end : (o.end && o.end !== '24:00' ? o.end : o.end ? '23:59' : '21:00'))}"></label>
       </div>
       <div class="field only-group">参加する人${memberSeg('participants', who)}</div>
-      <label class="only-meeting">何を議論するか（議題）<textarea name="agenda" rows="3" maxlength="3000" placeholder="例：・新曲のリリース日&#10;・MVの方向性">${esc(e ? e.agenda || '' : '')}</textarea></label>
-      <label class="only-meeting">議事録<textarea name="minutes" rows="8" maxlength="30000" placeholder="会議のあとに、決まったこと・話したことを書いてください">${esc(e ? e.minutes || '' : '')}</textarea></label>
+      <div class="kind-fields">${kindFields(kind, e ? e.agenda : '', e ? e.minutes : '')}</div>
       <label>メモ<textarea name="note" rows="2" maxlength="1000" placeholder="持ち物・やる事の詳細など">${esc(e ? e.note : '')}</textarea></label>
       <button class="btn gem" type="submit">${e ? '保存する' : '予定を入れる'}</button>
     </form>`;
@@ -1634,12 +1641,14 @@ function openSheet(html) {
   w.hidden = false;
   $('#sheet').scrollTop = 0;
   const r = $('#sheet input[type=range]'); if (r) syncRange(r);
+  if (window.MGX) { MGX.sheet($('#sheet')); MGX.lock(true); }
   requestAnimationFrame(() => requestAnimationFrame(() => { w.classList.add('open'); FX.sheetIn($('#sheet')); }));
 }
 function closeSheet() {
   const w = $('#sheetWrap');
   w.classList.remove('open');
   const out = FX.sheetOut($('#sheet'));
+  if (window.MGX) setTimeout(syncLock, 260);
   if (out) { out.then(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; $('#sheet').style.transform = ''; } }); return; }
   setTimeout(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; } }, 250);
 }
@@ -1776,7 +1785,7 @@ async function handleForm(kind, f, btn) {
     applyDetail(r, true);
     render(); renderProj();
     toast(DONE_MSG[kind]);
-    if (kind === 'complete') FX.confetti();
+    if (kind === 'complete') { FX.confetti(); if (window.MGX) MGX.checkBurst(); }
   });
 }
 
@@ -1965,7 +1974,7 @@ function viewSync() {
     }).join('') : '<p class="empty-msg">完成した曲はまだありません。<br>曲のステップがすべて完了すると、ここにタイトルが入ります。</p>'}`;
   }
   const p = proj(S.syncPid);
-  if (!S.syncRows) return `<button class="btn ghost sm" data-act="syncBack">← 曲の一覧</button><p class="empty-msg">読み込み中…</p>`;
+  if (!S.syncRows) return `<button class="btn ghost sm" data-act="syncBack">← 曲の一覧</button><div class="lt-load" data-lottie="lottie/loader.json"></div>`;
   return `<button class="btn ghost sm" data-act="syncBack" style="width:auto">← 曲の一覧</button>
   <h3 class="sync-title">${esc(p ? p.name : '')}</h3>
   <div class="sync-bar">
@@ -2089,7 +2098,7 @@ function mdEditorHtml() {
   return h;
 }
 function viewMandala() {
-  if (!S.mandalaLoaded) { setTimeout(loadMandala, 0); return '<h2 class="page-title">目標マンダラ</h2><p class="empty-msg">読み込み中…</p>'; }
+  if (!S.mandalaLoaded) { setTimeout(loadMandala, 0); return '<h2 class="page-title">目標マンダラ</h2><div class="lt-load" data-lottie="lottie/loader.json"></div>'; }
   const meta = mdGet('meta'), d = mdProgress();
   const recent = Object.entries(S.mandala).filter(([, v]) => v && v.at).sort((a, b) => b[1].at - a[1].at).slice(0, 8);
   return `<h2 class="page-title">目標マンダラ</h2>
@@ -2601,7 +2610,10 @@ document.addEventListener('change', e => {
   }
   if (e.target.id === 'syncRate') syncAudio.playbackRate = Number(e.target.value);
   if (e.target.matches('form[data-form=event] input[name=kind]')) {
-    e.target.closest('form').dataset.kind = e.target.value;
+    const f = e.target.closest('form');
+    f.dataset.kind = e.target.value;
+    const box = f.querySelector('.kind-fields');
+    if (box) { const a = box.querySelector('[name=agenda]'), m = box.querySelector('[name=minutes]'); box.innerHTML = kindFields(e.target.value, a ? a.value : '', m ? m.value : ''); }
   }
   if (e.target.matches('[data-change=jacketFile]')) {
     const file = e.target.files[0]; if (!file) return;

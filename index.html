@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;1,500;1,600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 <div id="bg"></div>
@@ -48,6 +48,7 @@
 <!-- ログイン -->
 <section id="login" hidden>
   <div class="login-card">
+    <div class="gem3d login-gem3d" data-gem3d></div>
     <img src="icons/icon-192.png?v=2" class="login-gem" alt="">
     <h1 class="brand">Midnight Garnet<span>💫</span></h1>
     <p class="sub">Progress Board</p>
@@ -110,7 +111,7 @@
     </button>
     <h2>管理者画面</h2>
   </div>
-  <div id="aBody" class="o-body"></div>
+  <div id="aBody" class="o-body" data-lenis-prevent></div>
 </section>
 
 <!-- アルバム・曲 -->
@@ -121,7 +122,7 @@
     </button>
     <h2 id="pTitle"></h2>
   </div>
-  <div id="pBody" class="o-body"></div>
+  <div id="pBody" class="o-body" data-lenis-prevent></div>
 </section>
 
 <!-- タスク詳細 -->
@@ -132,7 +133,7 @@
     </button>
     <h2 id="dTitle"></h2>
   </div>
-  <div id="dBody"></div>
+  <div id="dBody" data-lenis-prevent></div>
   <form id="composer" class="composer">
     <textarea id="msgInput" rows="1" placeholder="メッセージを入力"></textarea>
     <button class="send" type="submit" aria-label="送信">
@@ -151,6 +152,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/motion@14.0.0/dist/motion.js"></script>
 <script src="config.js?v=3"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.13.0/build/player/lottie_light.min.js" defer></script>
+<script type="module" src="fx-extra.js?v=15"></script>
 </body>
 </html>

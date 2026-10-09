@@ -727,3 +727,26 @@ form[data-form=event][data-kind=personal] .only-group{display:none}
 .sp-comet.glow{stroke:#ff2d55;stroke-width:4.5}
 .sp-flash{position:absolute;left:66%;top:22%;width:30%;aspect-ratio:1;margin:-15% 0 0 -15%;border-radius:50%;opacity:0;
   background:radial-gradient(circle,#fff 0,#ffc2d0 18%,rgba(255,61,99,.55) 40%,transparent 70%)}
+
+/* ===== アニメーション拡張（GSAP / Lottie / Three.js / Locomotive・Lenis / Auto Animate） ===== */
+html.lenis,html.lenis body{height:auto}
+.lenis.lenis-smooth{scroll-behavior:auto!important}
+.lenis.lenis-stopped{overflow:hidden}
+.gs-ch{display:inline-block;will-change:transform}
+/* 画面に入ったら見出しの下に光る線が伸びる（Locomotive の is-inview） */
+.sec{position:relative}
+.sec[data-scroll]::after{content:'';position:absolute;left:0;bottom:-4px;height:2px;width:56px;border-radius:2px;background:linear-gradient(90deg,var(--garnet-hi),transparent);transform:scaleX(0);transform-origin:left;transition:transform .7s cubic-bezier(.2,.8,.2,1) .1s}
+.sec.is-inview::after{transform:scaleX(1)}
+/* Lottie */
+.lt-load{width:84px;height:84px;margin:40px auto}
+.lt-check{position:fixed;left:50%;top:42%;width:150px;height:150px;margin:-75px 0 0 -75px;z-index:998;pointer-events:none;border-radius:50%;background:radial-gradient(circle,rgba(155,17,30,.55),rgba(0,0,0,0) 70%)}
+/* Three.js のガーネット */
+.gem3d{position:relative}
+.gem3d canvas{display:block;width:100%!important;height:100%!important}
+.login-card{position:relative}
+.login-gem3d{position:absolute;left:50%;top:-40px;width:260px;height:260px;margin-left:-130px;z-index:-1;opacity:.85;pointer-events:none}
+.disco-hero{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:10px 14px;border-radius:var(--r);background:radial-gradient(120% 140% at 0 50%,rgba(155,17,30,.35),transparent 60%),var(--surface);border:1px solid var(--line)}
+.disco-hero .gem3d{width:96px;height:96px;flex:none}
+.disco-hero b{display:block;font-family:'Cormorant Garamond',serif;font-size:24px;font-style:italic}
+.disco-hero small{font-size:11px;letter-spacing:.18em;color:var(--muted)}
+.login-card{isolation:isolate}
