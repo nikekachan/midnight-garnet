@@ -856,3 +856,4 @@ html.lenis,html.lenis body{height:auto}
 /* 意見箱の文字も同じく明るめに */
 .idea-text{color:color-mix(in oklab,var(--c) 62%,#fff)}
 .idea{background:color-mix(in oklab,var(--c) 7%,var(--surface2))}
+.idea-top{justify-content:flex-start;gap:6px;align-items:center}
