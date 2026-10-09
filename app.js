@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [],
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {},
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -368,7 +368,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -464,10 +464,17 @@ function syncLock() {
 // ---------- メイン画面 ----------
 function render() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  renderHeader();
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
   const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
+  afterViewRender();
+}
+function renderHeader() {
+  if (!S.me) return;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+}
+function afterViewRender() {
   // 画面が変わったときだけ入場アニメーション（同じ画面の更新では動かさない）
   const key = [S.view, S.calMode, S.worksMode, S.syncPid].join('|');
   if (key !== S.fxKey) { S.fxKey = key; FX.enter($('#view')); window.MGX ? MGX.toTop(true) : window.scrollTo(0, 0); }
@@ -547,6 +554,7 @@ function viewCalendar() {
   <div class="segtabs three">${[['month', 'カレンダー'], ['free', '空き時間・共通'], ['minutes', '議事録']].map(([k, l]) =>
     `<button class="${S.calMode === k ? 'on' : ''}" data-act="calMode" data-m="${k}">${l}</button>`).join('')}</div>
   ${offBanner()}
+  ${S.calMode === 'month' ? meetupPanel() : ''}
   ${S.calMode === 'minutes' ? '' : shiftBanner()}
   ${S.calMode === 'free' ? viewFree() : S.calMode === 'minutes' ? viewMinutes() : viewMonth()}`;
 }
@@ -554,6 +562,38 @@ function viewCalendar() {
 function myShiftTask() {
   return S.tasks.find(t => t.kind === 'shift' && t.status === 'open' && isMine(t)) || null;
 }
+// ---------- 次に集まる日（やりたいこと・やることの意見） ----------
+const ideasOf = eventId => S.eventIdeas.filter(i => i.eventId === eventId).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+function ideasHtml(e) {
+  const list = ideasOf(e.id);
+  return `<div class="mu-ideas">${list.length ? list.map(i => `<div class="mu-idea" style="--c:${mem(i.author).color}">
+      <span class="who" style="--c:${mem(i.author).color}">${esc(mem(i.author).name)}</span><p>${linkify(i.text)}</p>
+      ${i.author === S.me.id || isAdminMode() ? `<button class="mu-del" data-act="ideaDel" data-id="${esc(i.id)}" aria-label="削除">×</button>` : ''}
+    </div>`).join('') : '<p class="muted small" style="margin:0">まだ意見はありません。この日にやりたいこと・やることを書いておこう！</p>'}</div>
+    <form data-form="eventIdea" data-event="${esc(e.id)}" class="mu-form">
+      <input name="text" maxlength="300" required placeholder="💡 この日にやりたいこと・やること" autocomplete="off">
+      <button class="btn gem sm" type="submit">追加</button>
+    </form>`;
+}
+function meetupPanel() {
+  const list = S.events.filter(e => e.kind !== 'personal' && e.date >= today() && splitIds(e.participants).length >= 2)
+    .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).slice(0, 2);
+  if (!list.length) return `<div class="meetup empty"><b>🗓 次に集まる日</b><span class="muted small">まだ決まっていません</span>
+    <button class="btn ghost sm" data-act="form" data-form="event" data-date="${today()}">＋ 予定を入れる</button></div>`;
+  return list.map((e, k) => {
+    const d = daysLeft(e.date);
+    return `<div class="meetup ${k ? 'sub' : ''}">
+      <div class="mu-head"><b>${k ? '🗓 その次' : '🗓 次に集まる日'}</b><span class="mu-count">${d === 0 ? '今日！' : d === 1 ? '明日' : 'あと' + d + '日'}</span></div>
+      <button class="mu-ev" data-act="event" data-id="${esc(e.id)}">
+        <b>${md(e.date)} ${esc(e.start)}〜${esc(e.end)}</b>
+        <span>${KIND_ICON[e.kind] || ''}${esc(e.title)}${e.place ? '＠' + esc(e.place) : ''}</span>
+        ${whoChips(splitIds(e.participants))}
+      </button>
+      ${ideasHtml(e)}
+    </div>`;
+  }).join('');
+}
+
 // ---------- 全員休みの日（希望休の周知） ----------
 const offOn = date => S.offdays.find(o => o.date === date) || null;
 function offBanner() {
@@ -964,6 +1004,7 @@ function openProj(id, push = true) {
   if (wasHidden) requestAnimationFrame(() => FX.overlayIn($('#proj')));
   syncLock();
   renderProj();
+  loadPChat(id);
 }
 function projBack() {
   S.projStack.pop();
@@ -1001,6 +1042,7 @@ function renderProj() {
       ${songs.length ? songs.map(songCard).join('') : '<p class="empty-msg">まだ曲がありません</p>'}
       <h3 class="sec">アルバム全体のタスク（ジャケット・入稿など）</h3>
       ${own.length ? stepTimeline(own) : '<p class="empty-msg">アルバム全体のタスクはありません</p>'}
+      ${pchatBlock(p)}
     </div>`;
   } else {
     const album = p.parentId ? proj(p.parentId) : null;
@@ -1025,10 +1067,59 @@ function renderProj() {
         <button class="btn gem sm" data-act="form" data-form="task" data-project="${esc(p.id)}">＋ ステップを追加</button>
         <button class="btn ghost sm" data-act="form" data-form="rename" data-project="${esc(p.id)}">名前を変更</button>
       </div>
+      ${pchatBlock(p)}
     </div>`;
   }
   body.scrollTop = top;
 }
+
+// ---------- 曲ごとのチャット（ステップのやりとり・進捗・完了をひとつの流れに） ----------
+const NOTE_ICON = { progress: '📈', done: '✅', delay: '⏰', failed: '⚠️', system: '·', admin: '🛡' };
+function pchatMsgsHtml(pid) {
+  const list = S.pchat[pid];
+  if (!list) return '<div class="lt-load" data-lottie="lottie/loader.json"></div>';
+  if (!list.length) return '<p class="empty-msg">まだメッセージはありません。<br>この曲のことは、ここでまとめて話そう！</p>';
+  return list.map(m => {
+    const tag = m.taskTitle && m.taskId !== pid ? `<span class="m-tag">#${esc(m.taskTitle)}</span>` : '';
+    if (m.type === 'chat') {
+      const a = mem(m.author), mine = m.author === S.me.id;
+      return `<div class="m ${mine ? 'mine' : ''}">${mine ? '' : `<div class="m-name" style="color:${a.color}">${esc(a.name)}</div>`}<div class="bubble">${linkify(m.text)}</div><time>${tag}${timeLabel(m.createdAt)}</time></div>`;
+    }
+    // 進捗・完了・遅延などは、チャットの流れの中に小さく薄く差し込む
+    const a = mem(m.author);
+    const what = { progress: `進捗 ${esc(m.progress)}%`, done: '完了', delay: '遅延の報告', failed: '完了できない報告' }[m.type] || '';
+    const text = String(m.text || '').replace(/\s+/g, ' ');
+    return `<div class="m-note t-${m.type}" style="--c:${a.color}">${NOTE_ICON[m.type] || '·'} ${m.type === 'system' || m.type === 'admin' ? '' : `<b>${esc(a.name)}</b>`}${m.taskTitle ? `「${esc(m.taskTitle)}」` : ''}${what}${text ? `<span>${esc(text.slice(0, 80))}</span>` : ''}<time>${timeLabel(m.createdAt)}</time></div>`;
+  }).join('');
+}
+function pchatBlock(p) {
+  return `<h3 class="sec">💬 ${p.type === 'album' ? 'アルバム' : 'この曲'}のチャット</h3>
+    <p class="hint" style="margin:-4px 2px 8px">各ステップでのやりとりと、進捗・完了の報告もここにまとまります。</p>
+    <div class="msgs pchat" id="pChat">${pchatMsgsHtml(p.id)}</div>
+    <form data-form="projChat" data-project="${esc(p.id)}" class="reply-form composer-lite pchat-form">
+      <textarea name="text" rows="1" maxlength="1000" required placeholder="${esc(p.name)} について話す…"></textarea>
+      <button class="send" type="submit" aria-label="送信"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    </form>`;
+}
+async function loadPChat(pid, toBottom) {
+  try {
+    const r = await api('getProjectChat', { projectId: pid });
+    const before = (S.pchat[pid] || []).length;
+    S.pchat[pid] = r.messages || [];
+    const box = $('#pChat');
+    if (box && S.projStack[S.projStack.length - 1] === pid) {
+      const body = $('#pBody');
+      const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 140;
+      box.innerHTML = pchatMsgsHtml(pid);
+      if (toBottom || (nearBottom && S.pchat[pid].length > before)) body.scrollTop = body.scrollHeight;
+    }
+  } catch (e) { if (!S.pchat[pid]) S.pchat[pid] = []; }
+}
+setInterval(() => {
+  const pid = S.projStack[S.projStack.length - 1];
+  const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('.pchat-form');
+  if (pid && !$('#proj').hidden && document.visibilityState === 'visible' && !typing) loadPChat(pid);
+}, 8000);
 
 function stepTimeline(steps) {
   return `<ol class="steps">${steps.map((s, i) => {
@@ -1405,6 +1496,8 @@ const FORMS = {
         ${e.place ? `<div class="evd-row"><span class="lbl">場所</span><span>${esc(e.place)}</span></div>` : ''}
         ${e.kind === 'personal' ? '' : `<div class="evd-row"><span class="lbl">参加</span>${whoChips(parts)}</div>`}
         ${e.note ? `<div class="evd-row"><span class="lbl">メモ</span><span>${linkify(e.note)}</span></div>` : ''}
+        ${(() => { const ms = S.memos.filter(m => m.eventId === e.id); return ms.length ? `<div class="evd-row"><span class="lbl">掲示板</span><span class="ev-memos">${ms.map(m => `<button data-act="memoGo" data-id="${esc(m.id)}">📋 ${esc(m.title)}</button>`).join('')}</span></div>` : ''; })()}
+        ${e.date >= today() && e.kind !== 'personal' ? `<div class="evd-ideas"><div class="lbl">💡 やりたいこと・やること</div>${ideasHtml(e)}</div>` : ''}
         <div class="evd-row"><span class="lbl">作成</span><span class="muted">${esc(mem(e.createdBy).name)}</span></div>
       </div>
       <div class="two" style="margin-top:14px">
@@ -1558,6 +1651,7 @@ const FORMS = {
     const x = o.id ? S.memos.find(m => m.id === o.id) : null;
     return `<form data-form="memo" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? 'メモを編集' : '新しいメモ')}
       <label>タイトル<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}" placeholder="例：作曲シートのフォーマット"></label>
+      <label>関連する予定（会議など）<select name="eventId"><option value="">なし</option>${memoEventOptions(x ? x.eventId : (o.event || ''))}</select></label>
       <label>内容<textarea name="body" rows="12" maxlength="20000" required placeholder="フォーマットや、みんなに共有したいことを書いてください">${esc(x ? x.body : '')}</textarea></label>
       <p class="hint" style="margin-top:-6px">3人全員が見られます。編集・削除できるのは書いた本人だけで、ほかの人はコピーだけできます。</p>
       <button class="btn gem" type="submit">${x ? '保存する' : '追加する'}</button>
@@ -1737,6 +1831,22 @@ async function handleForm(kind, f, btn) {
       closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
       return;
     }
+    if (kind === 'projChat') {
+      const pid = f.dataset.project;
+      const r = await api('postProjectChat', { projectId: pid, text: v('text') });
+      S.pchat[pid] = r.messages || [];
+      f.reset();
+      const box = $('#pChat'); if (box) box.innerHTML = pchatMsgsHtml(pid);
+      $('#pBody').scrollTop = $('#pBody').scrollHeight;
+      return;
+    }
+    if (kind === 'eventIdea') {
+      applyBoot(await api('addEventIdea', { eventId: f.dataset.event, text: v('text') }));
+      f.reset(); refreshAll();
+      if (!$('#sheetWrap').hidden && $('#sheet .evd-ideas')) openSheet(FORMS.eventView(null, { id: f.dataset.event }));
+      toast('やりたいことを追加しました 💡');
+      return;
+    }
     if (kind === 'link') {
       applyBoot(await api('saveLink', { platform: v('platform'), url: v('url'), label: v('label') }));
       openSheet(FORMS.links()); render(); toast('SNSを追加しました 🔗');
@@ -1753,7 +1863,7 @@ async function handleForm(kind, f, btn) {
       return;
     }
     if (kind === 'memo') {
-      applyBoot(await api('saveMemo', { id: f.dataset.id || '', title: v('title'), body: v('body') }));
+      applyBoot(await api('saveMemo', { id: f.dataset.id || '', title: v('title'), body: v('body'), eventId: v('eventId') }));
       closeSheet(); refreshAll(); toast(f.dataset.id ? 'メモを保存しました' : 'メモを追加しました 📋');
       return;
     }
@@ -2213,6 +2323,13 @@ function snsBar(withEdit) {
 }
 
 // ---------- 掲示板・メモ ----------
+/** メモに紐づける予定の候補：会議を先に、近い日付から */
+function memoEventOptions(sel) {
+  const list = S.events.filter(e => e.kind !== 'personal' && e.date >= addDays(today(), -120) && e.date <= addDays(today(), 90))
+    .sort((a, b) => (a.kind === 'meeting' ? 0 : 1) - (b.kind === 'meeting' ? 0 : 1) || Math.abs(daysLeft(a.date)) - Math.abs(daysLeft(b.date)));
+  if (sel && !list.some(e => e.id === sel)) { const e = S.events.find(x => x.id === sel); if (e) list.unshift(e); }
+  return list.map(e => `<option value="${esc(e.id)}" ${e.id === sel ? 'selected' : ''}>${e.kind === 'meeting' ? '🗣 ' : '📅 '}${md(e.date)} ${esc(e.title)}</option>`).join('');
+}
 // 返信・リアクション・既読
 const MEMO_REACTIONS = ['👍', '❤️', '😂', '🔥', '👀', '🙏'];
 const repliesOf = id => S.memoReplies.filter(r => r.memoId === id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -2225,8 +2342,23 @@ const activityFor = (x, mid) => repliesOf(x.id).filter(r => r.author !== mid)
 const hasRead = (x, mid) => { const act = activityFor(x, mid); return !act || readAt(x.id, mid) >= act; };
 const unreadMemos = () => S.me ? S.memos.filter(x => !hasRead(x, S.me.id)) : [];
 let readSending = false;
-function markMemosRead() {
-  const ids = unreadMemos().map(x => x.id);
+/** 既読：その投稿が画面に0.8秒以上しっかり映ったら付ける */
+let readObs = null, readQueue = new Set(), readTimer = null;
+function watchMemoReads() {
+  if (readObs) readObs.disconnect();
+  const unread = new Set(unreadMemos().map(x => x.id));
+  const timers = {};
+  readObs = new IntersectionObserver(entries => entries.forEach(en => {
+    const id = en.target.dataset.memo;
+    if (en.isIntersecting && en.intersectionRatio >= 0.5) {
+      timers[id] = setTimeout(() => { readQueue.add(id); readObs.unobserve(en.target); clearTimeout(readTimer); readTimer = setTimeout(() => markMemosRead([...readQueue]), 600); }, 800);
+    } else clearTimeout(timers[id]);
+  }), { threshold: [0, 0.5, 1] });
+  $$('.memo[data-memo]').forEach(el => { if (unread.has(el.dataset.memo)) readObs.observe(el); });
+}
+function markMemosRead(only) {
+  const ids = (only || unreadMemos().map(x => x.id)).filter(Boolean);
+  readQueue = new Set();
   if (!ids.length || readSending) return;
   readSending = true;
   const at = new Date().toISOString();
@@ -2235,6 +2367,8 @@ function markMemosRead() {
     if (k) k.at = at; else S.memoMarks.push({ memoId: id, memberId: S.me.id, kind: 'read', value: '', at });
   });
   api('readMemos', { ids }).catch(() => {}).finally(() => { readSending = false; });
+  renderHeader();
+  ids.forEach(id => { const n = $(`#memo-${CSS.escape(id)} .new`); if (n) n.remove(); });
 }
 /** スタンプを押す：先に画面を更新してアニメーション → 裏で保存 */
 function reactMemo(el) {
@@ -2288,7 +2422,7 @@ function reactAnim(btn, rect, emoji, adding) {
 }
 function viewBoard() {
   const unread = unreadMemos().map(x => x.id);
-  setTimeout(() => { markMemosRead(); const hb = $('.hd-badge'); if (hb) hb.remove(); }, 1500);
+  setTimeout(watchMemoReads, 50);
   const list = S.memos.slice().sort((a, b) => memoActivity(b).localeCompare(memoActivity(a)));
   return `<h2 class="page-title">掲示板・メモ</h2>
   <p class="muted small" style="margin:-4px 2px 12px">フォーマットや共有したいことを貼っておく場所です。全員が見られて、「コピー」ボタンで中身をコピーできます。編集・削除は書いた本人だけです。</p>
@@ -2298,7 +2432,9 @@ function viewBoard() {
     const reps = repliesOf(x.id);
     const reacts = MEMO_REACTIONS.map(e => ({ e, who: S.memoMarks.filter(k => k.memoId === x.id && k.kind === 'react' && k.value === e).map(k => k.memberId) }));
     const readers = S.members.filter(m => m.id !== x.author && hasRead(x, m.id));
-    return `<div class="memo" style="--c:${mem(x.author).color}">
+    const ev = x.eventId ? S.events.find(e => e.id === x.eventId) : null;
+    return `<div class="memo" id="memo-${esc(x.id)}" data-memo="${esc(x.id)}" style="--c:${mem(x.author).color}">
+      ${ev ? `<button class="memo-ev" data-act="event" data-id="${esc(ev.id)}">${ev.kind === 'meeting' ? '🗣' : '📅'} ${md(ev.date)} ${esc(ev.start)}〜　<b>${esc(ev.title)}</b><i>${ev.kind === 'meeting' ? '議題・議事録を見る ›' : '予定を見る ›'}</i></button>` : x.eventId ? '<span class="memo-ev gone">関連する予定（表示期間外）</span>' : ''}
       <div class="memo-top"><b class="memo-title">${unread.includes(x.id) ? '<em class="new">NEW</em>' : ''}${esc(x.title)}</b><span class="who" style="--c:${mem(x.author).color}">${esc(mem(x.author).name)}</span></div>
       <pre class="memo-body">${esc(x.body)}</pre>
       <div class="reacts">${reacts.map(r => `<button class="react ${r.who.includes(S.me.id) ? 'on' : ''} ${r.who.length ? 'has' : ''}" data-act="memoReact" data-id="${esc(x.id)}" data-e="${r.e}" title="${esc(r.who.map(id => mem(id).name).join('・'))}">${r.e}${r.who.length ? `<b>${r.who.length}</b>` : ''}</button>`).join('')}</div>
@@ -2311,15 +2447,16 @@ function viewBoard() {
           <button class="btn outline sm" data-act="memoCopy" data-id="${esc(x.id)}">コピー</button>
         </span>
       </div>
-      <div class="replies">
-        ${reps.map(r => `<div class="reply" style="--c:${mem(r.author).color}">
-          <div class="reply-top"><span class="who" style="--c:${mem(r.author).color}">${esc(mem(r.author).name)}</span><span class="muted small">${timeLabel(r.createdAt)}</span>
-          ${r.author === S.me.id || isAdminMode() ? `<button class="reply-del" data-act="confirmDel" data-type="reply" data-id="${esc(r.id)}" data-label="返信">削除</button>` : ''}</div>
-          <p>${linkify(r.text)}</p>
-        </div>`).join('')}
-        <form data-form="memoReply" data-memo="${esc(x.id)}" class="reply-form">
+      <div class="replies chat">
+        ${reps.length ? `<div class="r-head">💬 返信 ${reps.length}件</div>` : ''}
+        ${reps.map(r => { const mine = r.author === S.me.id; return `<div class="m ${mine ? 'mine' : ''}">
+          ${mine ? '' : `<div class="m-name" style="color:${mem(r.author).color}">${esc(mem(r.author).name)}</div>`}
+          <div class="bubble">${linkify(r.text)}</div>
+          <time>${timeLabel(r.createdAt)}${mine || isAdminMode() ? ` · <button class="reply-del" data-act="confirmDel" data-type="reply" data-id="${esc(r.id)}" data-label="返信">削除</button>` : ''}</time>
+        </div>`; }).join('')}
+        <form data-form="memoReply" data-memo="${esc(x.id)}" class="reply-form composer-lite">
           <textarea name="text" rows="1" maxlength="3000" required placeholder="返信する…"></textarea>
-          <button class="btn gem sm" type="submit">送信</button>
+          <button class="send" type="submit" aria-label="送信"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
         </form>
       </div>
     </div>`;
@@ -2351,7 +2488,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / links / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / links / eventIdeas / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -2621,6 +2758,19 @@ document.addEventListener('click', e => {
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
     case 'memoReact': reactMemo(el); break;
+    case 'ideaDel': {
+      const evId = (S.eventIdeas.find(i => i.id === el.dataset.id) || {}).eventId;
+      busy(el, async () => {
+        applyBoot(await api('deleteEventIdea', { id: el.dataset.id })); refreshAll();
+        if (evId && !$('#sheetWrap').hidden && $('#sheet .evd-ideas')) openSheet(FORMS.eventView(null, { id: evId }));
+      }, '');
+      break;
+    }
+    case 'memoGo': {
+      closeSheet(); S.view = 'board'; render();
+      setTimeout(() => { const m = $('#memo-' + CSS.escape(el.dataset.id)); if (m) { m.scrollIntoView({ behavior: 'smooth', block: 'start' }); FX.pop(m, 0.94); } }, 300);
+      break;
+    }
     case 'linkDel': busy(el, async () => { applyBoot(await api('deleteLink', { id: el.dataset.id })); openSheet(FORMS.links()); render(); toast('削除しました'); }, '削除中…'); break;
     case 'offOpen': openSheet(FORMS.offView(null, { id: el.dataset.id })); break;
     case 'worksMode': S.worksMode = el.dataset.m; render(); break;
@@ -2819,7 +2969,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
-  const memoReplies = [], memoMarks = [], links = [];
+  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -2843,7 +2993,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas) };
   };
 
   const H = {
@@ -2977,6 +3127,10 @@ const Mock = (() => {
       return boot(m);
     },
     readMemos(r, m) { (r.ids || []).forEach(id => { const k = memoMarks.find(x => x.memoId === id && x.memberId === m.id && x.kind === 'read'); if (k) k.at = now(); else memoMarks.push({ memoId: id, memberId: m.id, kind: 'read', value: '', at: now() }); }); return { ok: true }; },
+    getProjectChat(r) { return { ok: true, messages: msgs.filter(x => x.taskId === r.projectId || tasks.some(t => t.id === x.taskId && t.projectId === r.projectId)).map(x => Object.assign({}, x, { taskTitle: (tasks.find(t => t.id === x.taskId) || {}).title || '' })) }; },
+    postProjectChat(r, m) { msgs.push({ id: 'm' + (++seq), taskId: r.projectId, author: m.id, type: 'chat', text: r.text, progress: '', createdAt: now() }); return H.getProjectChat(r); },
+    addEventIdea(r, m) { eventIdeas.push({ id: 'ei' + (++seq), eventId: r.eventId, author: m.id, text: r.text, createdAt: now() }); return boot(m); },
+    deleteEventIdea(r, m) { const i = eventIdeas.findIndex(x => x.id === r.id); if (i >= 0) eventIdeas.splice(i, 1); return boot(m); },
     saveLink(r, m) { links.push({ id: 'l' + (++seq), platform: r.platform, url: r.url, label: r.label || '', order: String(links.length + 1) }); return boot(m); },
     deleteLink(r, m) { const i = links.findIndex(x => x.id === r.id); if (i >= 0) links.splice(i, 1); return boot(m); },
     saveOffday(r, m) { const x = offdays.find(o => o.date === r.date); if (x) x.note = r.note || ''; else offdays.push({ id: 'o' + (++seq), date: date(r.date), note: r.note || '', createdBy: m.id, createdAt: now() }); return boot(m); },

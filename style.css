@@ -765,3 +765,49 @@ html.lenis,html.lenis body{height:auto}
 .link-row small{display:block;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 .link-row .btn{width:auto;margin:0}
 .sns-dot{width:14px;height:14px;border-radius:50%;background:var(--b)}
+
+/* 次に集まる日（ホーム） */
+.meetup{padding:12px 14px;margin-bottom:12px;border-radius:14px;border:1px solid rgba(77,163,255,.35);background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(155,17,30,.12))}
+.meetup.sub{opacity:.92;border-color:var(--line);background:var(--surface)}
+.meetup.empty{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.meetup.empty .btn{width:auto;margin:0 0 0 auto}
+.mu-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.mu-count{font-size:12px;font-weight:700;color:#000;background:#9ecbff;border-radius:99px;padding:1px 9px}
+.mu-ev{display:grid;gap:3px;width:100%;text-align:left;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.25);margin-bottom:8px}
+.mu-ev b{font-size:15px}
+.mu-ev span{font-size:13px}
+.mu-ideas{display:grid;gap:6px;margin-bottom:8px}
+.mu-idea{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:6px 8px;border-radius:10px;background:var(--surface2);border-left:3px solid var(--c)}
+.mu-idea p{margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.mu-del{color:var(--muted);font-size:14px;padding:0 4px}
+.mu-form{display:flex;gap:6px}
+.mu-form input{margin:0;padding:9px 12px;font-size:15px}
+.mu-form .btn{width:auto;margin:0;flex:none}
+.evd-ideas{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.evd-ideas .lbl{font-size:12px;color:var(--muted);margin-bottom:6px}
+.ev-memos{display:grid;gap:4px}
+.ev-memos button{text-align:left;color:var(--rose);font-size:13px}
+/* 掲示板：関連する予定 */
+.memo-ev{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;text-align:left;margin:-2px 0 8px;padding:6px 10px;border-radius:10px;border:1px dashed rgba(224,17,95,.5);background:rgba(155,17,30,.12);font-size:12px}
+.memo-ev i{font-style:normal;margin-left:auto;color:var(--rose)}
+.memo-ev.gone{opacity:.5;border-style:dotted}
+/* 返信をチャット形式に */
+.replies.chat{display:flex;flex-direction:column;gap:8px}
+.replies.chat .m{max-width:86%}
+.replies.chat .m time{display:block;font-size:10px;color:var(--muted);margin:2px 6px 0}
+.r-head{font-size:11px;color:var(--muted)}
+.reply-del{font-size:10px;color:var(--muted);text-decoration:underline}
+.composer-lite{display:flex;gap:6px;align-items:flex-end}
+.composer-lite textarea{margin:0;padding:9px 12px;font-size:15px;min-height:40px;border-radius:20px;resize:none}
+.composer-lite .send{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--gem);box-shadow:var(--glow)}
+/* 曲ごとのチャット */
+.pchat{margin-bottom:10px}
+.pchat .m time{display:block;font-size:10px;color:var(--muted);margin:2px 6px 0}
+.m-tag{display:inline-block;font-size:10px;color:var(--rose);margin-right:6px}
+.m-note{align-self:center;max-width:94%;font-size:11px;line-height:1.5;color:var(--muted);opacity:.7;text-align:center;padding:2px 10px;border-radius:99px;background:rgba(255,255,255,.03)}
+.m-note b{color:var(--c);font-weight:700;margin-right:2px}
+.m-note span{margin-left:6px;color:var(--muted)}
+.m-note time{margin-left:8px;font-size:10px;opacity:.8}
+.m-note.t-done{opacity:.9;color:var(--ok)}
+.m-note.t-failed,.m-note.t-delay{color:#ffb3c4}
+.pchat-form{position:sticky;bottom:0;padding:8px 0 calc(4px + var(--safe-b));background:linear-gradient(180deg,transparent,var(--bg) 30%)}
