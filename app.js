@@ -2536,9 +2536,9 @@ function ideasPanel() {
       <textarea name="text" rows="3" maxlength="2000" required placeholder="例：予定に色を付けたい／ホーム画面に今日の予定を出したい"></textarea>
       <button class="btn gem sm" type="submit">投稿する</button>
     </form>
-    ${list.length ? `<div class="ideas">${list.map(i => `<div class="idea">
-      <div class="idea-top"><span class="ist i-${i.status}">${IDEA_LABEL[i.status] || i.status}</span><span class="muted small">${esc(mem(i.author).name)}・${timeLabel(i.createdAt)}</span></div>
-      <p>${linkify(i.text)}</p></div>`).join('')}</div>` : ''}
+    ${list.length ? `<div class="ideas">${list.map(i => `<div class="idea" style="--c:${mem(i.author).color}">
+      <div class="idea-top"><span class="ist i-${i.status}">${IDEA_LABEL[i.status] || i.status}</span><span class="small idea-who">${esc(mem(i.author).name)}</span><span class="muted small">・${timeLabel(i.createdAt)}</span></div>
+      <p class="idea-text">${linkify(i.text)}</p></div>`).join('')}</div>` : ''}
     <button class="btn ghost sm" style="margin-top:12px" data-act="aiPrompt">AIに改修を頼むプロンプトをコピー</button>
   </div>`;
 }
@@ -2619,7 +2619,7 @@ function renderAdmin() {
   } else {
     const list = S.ideas.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     body = `<button class="btn ghost sm" data-act="aiPrompt" style="margin-bottom:12px">AIに改修を頼むプロンプトをコピー</button>` +
-      (list.length ? list.map(i => `<div class="arow"><div class="arow-main"><b>${linkify(i.text)}</b><small>${esc(mem(i.author).name)}・${timeLabel(i.createdAt)}</small></div>
+      (list.length ? list.map(i => `<div class="arow"><div class="arow-main"><b style="color:${mem(i.author).color}">${linkify(i.text)}</b><small><span style="color:${mem(i.author).color};font-weight:700">${esc(mem(i.author).name)}</span>・${timeLabel(i.createdAt)}</small></div>
         <div class="arow-btns"><select class="mini-sel" data-change="ideaStatus" data-id="${esc(i.id)}">${Object.keys(IDEA_LABEL).map(k => `<option value="${k}" ${k === i.status ? 'selected' : ''}>${IDEA_LABEL[k]}</option>`).join('')}</select>${delBtn('idea', i.id, i.text.slice(0, 20))}</div></div>`).join('') : '<p class="empty-msg">要望はまだありません</p>');
   }
   $('#aBody').innerHTML = `<div class="d-inner">
