@@ -351,7 +351,8 @@ async function busy(btn, fn, label = '送信中…') {
     A(n, { scale: [4.2, 1], opacity: [0, 1], filter: ['blur(6px)', 'blur(0px)'] }, { duration: 1.5, delay: i * 0.07, ease: EASE });
   });
   // ロゴに色が付く瞬間：名前がアーティスト名に変わり、それぞれの色で光ってから普通の文字に戻る
-  setTimeout(() => {
+  // Motion の時計で合わせる（setTimeout だとロゴの色付きとずれることがあるため）
+  A(0, 1, { duration: 0.01, delay: 2.7 }).then(() => {
     if (finished) return;
     bolts();
     names.forEach(n => {
@@ -363,7 +364,7 @@ async function busy(btn, fn, label = '送信中…') {
         scale: [1.18, 1],
       }, { duration: 1.4, ease: [0.2, 0.7, 0.2, 1] });
     });
-  }, 2700);
+  });
   // 三色の稲妻：画面を上から下へギザギザに走る
   function bolts() {
     const svg = $('.sp-bolts', el); if (!svg) return;
@@ -405,7 +406,8 @@ async function busy(btn, fn, label = '送信中…') {
     // 画面が少し揺れる
     A(el, { x: [0, -8, 7, -5, 3, 0], y: [0, 4, -3, 2, 0, 0] }, { duration: 0.45 });
   }
-  setTimeout(finish, 4800);
+  A(0, 1, { duration: 0.01, delay: 4.8 }).then(finish);
+  setTimeout(finish, 7000); // 念のため（アニメーションが止まっても必ず閉じる）
 })();
 window.addEventListener('mg:splashdone', () => { if (S.me && !$('#app').hidden) { S.fxKey = ''; render(); } else FX.login(); });
 
