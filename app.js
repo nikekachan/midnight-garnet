@@ -341,8 +341,52 @@ async function busy(btn, fn, label = '送信中…') {
   A(flash, { opacity: [0, 1, 0], scale: [0.2, 1.6, 2.2] }, { duration: 0.7, delay: 2.55, ease: 'easeOut' });
   A(logo, { opacity: [0, 1], scale: [1.12, 1], filter: ['blur(10px) brightness(2)', 'blur(0px) brightness(1)'] },
     { duration: 0.9, delay: 2.7, ease: [0.2, 0.8, 0.2, 1] });
-  A(stage, { scale: [0.96, 1] }, { duration: 3.6, ease: 'easeOut' });
-  setTimeout(finish, 4300);
+  // ロゴ：少し大きく傾いた状態から、急にスッと止まる（画像のイージング：最初が極端に速く、ゆっくり減速）
+  const EASE = [0.08, 0.82, 0.17, 1];
+  A(stage, { scale: [1.3, 1], rotate: [-14, 0] }, { duration: 1.6, ease: EASE });
+  // 名前：手前の大きな状態から、右回転しながら逆三角形の位置へ（30度回って止まる）
+  const names = $$('.sp-name', el), wrap = $('.sp-names', el);
+  A(wrap, { rotate: [-30, 0], scale: [1.6, 1] }, { duration: 1.5, ease: EASE });
+  names.forEach((n, i) => {
+    A(n, { scale: [4.2, 1], opacity: [0, 1], filter: ['blur(6px)', 'blur(0px)'] }, { duration: 1.5, delay: i * 0.07, ease: EASE });
+  });
+  // ロゴに色が付く瞬間：名前がアーティスト名に変わり、それぞれの色で光ってから普通の文字に戻る
+  setTimeout(() => {
+    if (finished) return;
+    bolts();
+    names.forEach(n => {
+      const c = getComputedStyle(n).getPropertyValue('--c').trim();
+      n.textContent = n.dataset.alt; n.classList.add('alt');
+      A(n, {
+        color: [c, '#ffffff'],
+        textShadow: [`0 0 6px ${c}, 0 0 22px ${c}, 0 0 46px ${c}`, `0 0 0px rgba(0,0,0,0), 0 0 0px rgba(0,0,0,0), 0 0 0px rgba(0,0,0,0)`],
+        scale: [1.18, 1],
+      }, { duration: 1.4, ease: [0.2, 0.7, 0.2, 1] });
+    });
+  }, 2700);
+  // 三色の稲妻：画面を上から下へギザギザに走る
+  function bolts() {
+    const svg = $('.sp-bolts', el); if (!svg) return;
+    const W = el.clientWidth, H = el.clientHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    ['#4DA3FF', '#3DDC84', '#FF4D5E'].forEach((c, k) => {
+      let x = W * (0.25 + k * 0.25) + (Math.random() - 0.5) * W * 0.12, y = -10;
+      let d = `M${x.toFixed(1)} ${y}`;
+      while (y < H + 10) { y += 30 + Math.random() * 50; x += (Math.random() - 0.5) * 90; d += ` L${x.toFixed(1)} ${y.toFixed(1)}`; }
+      const ns = 'http://www.w3.org/2000/svg';
+      [[c, 7, 0.45], ['#ffffff', 2, 1]].forEach(([col, w, op]) => {
+        const p = document.createElementNS(ns, 'path');
+        p.setAttribute('d', d); p.setAttribute('stroke', col); p.setAttribute('stroke-width', w);
+        p.style.filter = `drop-shadow(0 0 8px ${c}) drop-shadow(0 0 18px ${c})`;
+        svg.appendChild(p);
+        const L = p.getTotalLength();
+        p.style.strokeDasharray = `${L} ${L}`;
+        A(p, { strokeDashoffset: [L, 0] }, { duration: 0.18, delay: k * 0.05, ease: 'easeOut' });
+        A(p, { opacity: [op, op, op * 0.3, op, 0] }, { duration: 0.75, delay: k * 0.05, times: [0, 0.3, 0.45, 0.6, 1] }).then(() => p.remove());
+      });
+    });
+  }
+  setTimeout(finish, 4800);
 })();
 window.addEventListener('mg:splashdone', () => { if (S.me && !$('#app').hidden) { S.fxKey = ''; render(); } else FX.login(); });
 
@@ -501,7 +545,8 @@ const shiftsOn = (mid, date) => {
     .map(f => ({ memberId: mid, date, start: f.start, end: f.end, note: f.note || '', fixed: true }));
 };
 function stateArr(mid, date, slots) {
-  const base = (slots || availRow(mid, date)).split('').map(c => c === '1' ? 'ok' : c === '2' ? 'ng' : 'u');
+  // 何も入れていない時間は「予定なし＝集まれる（free）」として扱う
+  const base = (slots || availRow(mid, date)).split('').map(c => c === '1' ? 'ok' : c === '2' ? 'ng' : 'free');
   shiftsOn(mid, date).forEach(sh => {
     const a = toMin(sh.start), b = toMin(sh.end);
     for (let i = 0; i < 48; i++) if (i * 30 < b && i * 30 + 30 > a) base[i] = 'shift';
@@ -533,7 +578,7 @@ function commonRanges(date, mode) {
   const st = S.members.map(m => ({ id: m.id, s: stateArr(m.id, date) }));
   const out = []; let cur = null;
   for (let i = SLOT0; i <= 48; i++) {
-    const who = i < 48 ? st.filter(x => x.s[i] === 'ok').map(x => x.id) : [];
+    const who = i < 48 ? st.filter(x => x.s[i] === 'ok' || x.s[i] === 'free').map(x => x.id) : [];
     const ok = mode === 3 ? who.length === S.members.length : who.length >= 2;
     const key = ok ? who.join(',') : '';
     if (cur && cur.key === key && key) { cur.end = i + 1; continue; }
@@ -716,7 +761,7 @@ function memberDay(mm, date) {
   if (ps.length) parts.push(`<span class="st-ps">個人の予定 ${ps.join('、')}</span>`);
   if (ok.length) parts.push(`<span class="st-ok">◯ ${ok.join('、')}</span>`);
   if (ng.length) parts.push(`<span class="st-ng">✕ ${ng.join('、')}</span>`);
-  return `<div class="mday"><span class="who" style="--c:${mm.color}">${esc(mm.name)}</span><div>${parts.join('') || '<span class="muted">未入力</span>'}</div></div>`;
+  return `<div class="mday"><span class="who" style="--c:${mm.color}">${esc(mm.name)}</span><div>${parts.join('') || '<span class="muted">予定なし（集まれる）</span>'}</div></div>`;
 }
 
 function eventCard(e) {
@@ -743,7 +788,7 @@ function viewFree() {
   for (let i = SLOT0; i < 48; i++) {
     grid += `<div class="wk-t">${i % 2 === 0 ? slotTime(i) : ''}</div>`;
     grid += cols.map(c => {
-      const who = c.st.filter(x => x.s[i] === 'ok').length;
+      const who = c.st.filter(x => x.s[i] === 'ok' || x.s[i] === 'free').length;
       const hit = mode === 3 ? who === c.st.length : who >= 2;
       return `<div class="wk-c ${hit ? 'hit' : ''} ${i % 2 === 0 ? 'hour' : ''}">${c.st.map(x => `<i class="s-${x.s[i]}" style="--c:${x.m.color}"></i>`).join('')}</div>`;
     }).join('');
@@ -772,11 +817,11 @@ function viewFree() {
   <div class="tl-wrap">
     <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
     <div class="wk">${grid}</div>
-    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-u"></i>未入力</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
+    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-free"></i>予定なし（集まれる）</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
   </div>
   <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${week[0]}">自分の空き時間を入力（この週）</button>
   <h3 class="sec">この週の共通の時間</h3>
-  ${weekRanges.length ? weekRanges.map(r => rangeBtn(r, r.date)).join('') : `<p class="empty-msg">${mode === 3 ? '3人そろう' : '2人以上そろう'}時間はまだありません。<br>「集まれる」を入力した時間だけで計算しています。</p>`}
+  ${weekRanges.length ? weekRanges.map(r => rangeBtn(r, r.date)).join('') : `<p class="empty-msg">${mode === 3 ? '3人そろう' : '2人以上そろう'}時間はまだありません。<br>シフト・個人の予定・「集まれない」以外の時間は、集まれるとして計算しています。</p>`}
   <h3 class="sec">この先2週間（1時間以上そろう時間）</h3>
   ${soon.length ? soon.slice(0, 20).map(r => rangeBtn(r, r.date)).join('') : '<p class="empty-msg">見つかりませんでした</p>'}`;
 }
