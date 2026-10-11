@@ -367,24 +367,43 @@ async function busy(btn, fn, label = '送信中…') {
   // 三色の稲妻：画面を上から下へギザギザに走る
   function bolts() {
     const svg = $('.sp-bolts', el); if (!svg) return;
-    const W = el.clientWidth, H = el.clientHeight;
+    const W = el.clientWidth, H = el.clientHeight, ns = 'http://www.w3.org/2000/svg';
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    ['#4DA3FF', '#3DDC84', '#FF4D5E'].forEach((c, k) => {
-      let x = W * (0.25 + k * 0.25) + (Math.random() - 0.5) * W * 0.12, y = -10;
-      let d = `M${x.toFixed(1)} ${y}`;
-      while (y < H + 10) { y += 30 + Math.random() * 50; x += (Math.random() - 0.5) * 90; d += ` L${x.toFixed(1)} ${y.toFixed(1)}`; }
-      const ns = 'http://www.w3.org/2000/svg';
-      [[c, 7, 0.45], ['#ffffff', 2, 1]].forEach(([col, w, op]) => {
+    // 画面全体が一瞬白く光る
+    const fl = document.createElement('i'); fl.className = 'sp-white'; el.appendChild(fl);
+    A(fl, { opacity: [0, 0.75, 0.1, 0.5, 0] }, { duration: 0.6, times: [0, 0.08, 0.25, 0.35, 1] }).then(() => fl.remove());
+    const jag = (x, y, endY, step, wild) => {
+      let d = `M${x.toFixed(1)} ${y.toFixed(1)}`; const pts = [[x, y]];
+      while (y < endY) { y += step * (0.5 + Math.random()); x += (Math.random() - 0.5) * wild; d += ` L${x.toFixed(1)} ${y.toFixed(1)}`; pts.push([x, y]); }
+      return { d, pts };
+    };
+    const strike = (d, c, delay, scale) => {
+      [[c, 22 * scale, 0.35], [c, 9 * scale, 0.9], ['#ffffff', 3.5 * scale, 1]].forEach(([col, w, op]) => {
         const p = document.createElementNS(ns, 'path');
         p.setAttribute('d', d); p.setAttribute('stroke', col); p.setAttribute('stroke-width', w);
-        p.style.filter = `drop-shadow(0 0 8px ${c}) drop-shadow(0 0 18px ${c})`;
+        p.style.filter = `drop-shadow(0 0 10px ${c}) drop-shadow(0 0 26px ${c})`;
         svg.appendChild(p);
         const L = p.getTotalLength();
         p.style.strokeDasharray = `${L} ${L}`;
-        A(p, { strokeDashoffset: [L, 0] }, { duration: 0.18, delay: k * 0.05, ease: 'easeOut' });
-        A(p, { opacity: [op, op, op * 0.3, op, 0] }, { duration: 0.75, delay: k * 0.05, times: [0, 0.3, 0.45, 0.6, 1] }).then(() => p.remove());
+        A(p, { strokeDashoffset: [L, 0] }, { duration: 0.12, delay, ease: 'easeOut' });
+        // バチバチと何度も明滅してから消える
+        A(p, { opacity: [op, op * 0.15, op, op * 0.25, op, op * 0.4, 0] }, { duration: 0.9, delay, times: [0, 0.12, 0.2, 0.32, 0.42, 0.6, 1] }).then(() => p.remove());
       });
+    };
+    ['#4DA3FF', '#3DDC84', '#FF4D5E'].forEach((c, k) => {
+      for (let n = 0; n < 2; n++) {
+        const delay = k * 0.04 + n * 0.16;
+        const main = jag(W * (0.18 + k * 0.32) + (Math.random() - 0.5) * W * 0.2, -20, H + 20, 40, 150);
+        strike(main.d, c, delay, n ? 0.75 : 1);
+        // 枝分かれ
+        for (let b = 0; b < 3; b++) {
+          const [bx, by] = main.pts[2 + Math.floor(Math.random() * Math.max(1, main.pts.length - 4))] || main.pts[0];
+          strike(jag(bx, by, by + H * (0.12 + Math.random() * 0.18), 26, 110).d, c, delay + 0.05, 0.45);
+        }
+      }
     });
+    // 画面が少し揺れる
+    A(el, { x: [0, -8, 7, -5, 3, 0], y: [0, 4, -3, 2, 0, 0] }, { duration: 0.45 });
   }
   setTimeout(finish, 4800);
 })();
@@ -797,12 +816,15 @@ function viewFree() {
       <span class="r-time"><small>${md(d)}</small>${r.from}〜${r.to}</span>
       <span class="r-who">${mode === 3 ? '3人そろう' : whoChips(r.who)}</span>
       <span class="r-go">予定を入れる ›</span></button>`;
+  // 過去は出さない・1時間以上そろう時間だけ
+  const nowHM = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+  const upcoming = (d, r) => d > today() || (d === today() && r.to > nowHM);
   const weekRanges = [];
-  week.forEach(d => commonRanges(d, mode).forEach(r => weekRanges.push(Object.assign({ date: d }, r))));
+  week.forEach(d => commonRanges(d, mode).filter(r => r.mins >= 60 && upcoming(d, r)).forEach(r => weekRanges.push(Object.assign({ date: d }, r))));
   const soon = [];
   for (let k = 0; k < 14; k++) {
     const d = addDays(today(), k);
-    commonRanges(d, mode).filter(r => r.mins >= 60).forEach(r => soon.push(Object.assign({ date: d }, r)));
+    commonRanges(d, mode).filter(r => r.mins >= 60 && upcoming(d, r)).forEach(r => soon.push(Object.assign({ date: d }, r)));
   }
   return `
   <div class="date-nav">
@@ -820,7 +842,7 @@ function viewFree() {
     <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-free"></i>予定なし（集まれる）</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
   </div>
   <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${week[0]}">自分の空き時間を入力（この週）</button>
-  <h3 class="sec">この週の共通の時間</h3>
+  <h3 class="sec">この週の共通の時間（1時間以上）</h3>
   ${weekRanges.length ? weekRanges.map(r => rangeBtn(r, r.date)).join('') : `<p class="empty-msg">${mode === 3 ? '3人そろう' : '2人以上そろう'}時間はまだありません。<br>シフト・個人の予定・「集まれない」以外の時間は、集まれるとして計算しています。</p>`}
   <h3 class="sec">この先2週間（1時間以上そろう時間）</h3>
   ${soon.length ? soon.slice(0, 20).map(r => rangeBtn(r, r.date)).join('') : '<p class="empty-msg">見つかりませんでした</p>'}`;

@@ -890,3 +890,8 @@ html.lenis,html.lenis body{height:auto}
 .sp-bolts path{fill:none;stroke-linejoin:miter;stroke-linecap:round}
 .wk-c i.s-free{background:color-mix(in oklab,var(--c) 30%,transparent)}
 .tl-legend .s-free{background:color-mix(in oklab,#4DA3FF 30%,transparent)}
+
+/* アーティスト名のフォント（角ばった極太・コンデンス） */
+.sp-name.alt,.artist{font-family:'Squada One','Noto Sans JP',sans-serif;font-style:normal;font-weight:400;-webkit-text-stroke:.07em currentColor;letter-spacing:.03em}
+.sp-name.alt{font-size:clamp(24px,7.4vw,36px)}
+.sp-white{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
