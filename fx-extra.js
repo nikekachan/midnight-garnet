@@ -19,8 +19,10 @@ if (G && window.SplitText) G.registerPlugin(window.SplitText);
 
 // ---------- Locomotive Scroll（Lenis） ----------
 let loco = null;
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 async function initScroll() {
-  if (reduce) return;
+  // スマホでは使わない（iPhoneで下のメニューがずれる原因になるため。指のスクロールはもともと標準のまま）
+  if (reduce || isTouch) { inviewFallback(); return; }
   try {
     const { default: LocomotiveScroll } = await import(CDN + 'locomotive-scroll@5.0.1/+esm');
     loco = new LocomotiveScroll({
@@ -30,6 +32,13 @@ async function initScroll() {
     if (loco.lenisInstance && window.ScrollTrigger) loco.lenisInstance.on('scroll', () => window.ScrollTrigger.update());
     afterRender($('#view'));
   } catch (e) { console.warn('Locomotive', e); }
+}
+/** スマホ用：見出しが画面に入ったら is-inview を付ける（Locomotive の代わり） */
+let ioFallback = null;
+function inviewFallback(root) {
+  if (!('IntersectionObserver' in window)) return;
+  ioFallback = ioFallback || new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-inview'); ioFallback.unobserve(e.target); } }), { rootMargin: '0px 0px -10% 0px' });
+  $$('[data-scroll]', root || document).forEach(el => ioFallback.observe(el));
 }
 function markScroll(root) {
   // 画面内に入ったら is-inview が付く（CSSで見出しの下線などを伸ばす）
@@ -164,6 +173,7 @@ function afterRender(root) {
   if (!root) return;
   markScroll(root);
   if (loco) { try { loco.removeScrollElements(root); loco.addScrollElements(root); } catch (e) {} }
+  else if (isTouch) inviewFallback(root);
   splitTitles(root);
   countUps(root);
   scrollReveals(root);

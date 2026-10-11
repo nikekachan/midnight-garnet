@@ -458,7 +458,7 @@ async function logout() {
 function syncLock() {
   const locked = !$('#detail').hidden || !$('#proj').hidden || !$('#admin').hidden;
   document.body.classList.toggle('lock', locked);
-  if (window.MGX) MGX.lock(locked || !$('#sheetWrap').hidden);
+  if (window.MGX) MGX.lock(locked || $('#sheetWrap').classList.contains('open'));
 }
 
 // ---------- メイン画面 ----------
@@ -662,7 +662,6 @@ function viewMonth() {
   <div class="home-below">
     ${meetupPanel()}
     ${offBanner()}
-    ${shiftBanner()}
   </div>
 
   <div class="day-head">
@@ -678,7 +677,8 @@ function viewMonth() {
   <h3 class="sec">メンバーの状況</h3>
   <div class="status-list">${S.members.map(mm => memberDay(mm, S.day)).join('')}</div>
   <h3 class="sec">この日が納期のタスク</h3>
-  ${dayList.length ? dayList.map(card).join('') : '<p class="empty-msg">この日が納期のタスクはありません</p>'}`;
+  ${dayList.length ? dayList.map(card).join('') : '<p class="empty-msg">この日が納期のタスクはありません</p>'}
+  <div class="home-last">${shiftBanner()}</div>`;
 }
 
 // カレンダーのマスに出すラベル（予定 → シフト → タスクの順）
@@ -1555,7 +1555,7 @@ const FORMS = {
         ${e.place ? `<div class="evd-row"><span class="lbl">場所</span><span>${esc(e.place)}</span></div>` : ''}
         ${e.kind === 'personal' ? '' : `<div class="evd-row"><span class="lbl">参加</span>${whoChips(parts)}</div>`}
         ${e.note ? `<div class="evd-row"><span class="lbl">メモ</span><span>${linkify(e.note)}</span></div>` : ''}
-        ${(() => { const ms = S.memos.filter(m => m.eventId === e.id); return ms.length ? `<div class="evd-row"><span class="lbl">掲示板</span><span class="ev-memos">${ms.map(m => `<button data-act="memoGo" data-id="${esc(m.id)}">📋 ${esc(m.title)}</button>`).join('')}</span></div>` : ''; })()}
+        ${(() => { const ms = S.memos.filter(m => m.eventId === e.id); return e.kind === 'personal' ? '' : `<div class="evd-row"><span class="lbl">掲示板</span><span class="ev-memos">${ms.map(m => `<button data-act="memoGo" data-id="${esc(m.id)}">📋 ${esc(m.title)}</button>`).join('')}<button class="ev-post" data-act="form" data-form="memo" data-event="${esc(e.id)}">＋ この予定について掲示板に投稿</button></span></div>`; })()}
         ${e.date >= today() && e.kind !== 'personal' ? `<div class="evd-ideas"><div class="lbl">💡 やりたいこと・やること</div>${ideasHtml(e)}</div>` : ''}
         <div class="evd-row"><span class="lbl">作成</span><span class="muted">${esc(mem(e.createdBy).name)}</span></div>
       </div>
@@ -1678,8 +1678,7 @@ const FORMS = {
       <div class="seg kind-seg">${Object.keys(DOJO_KIND).map(k => `<label class="seg-i"><input type="radio" name="kind" value="${k}" ${k === kind ? 'checked' : ''}><span>${DOJO_KIND[k][0]} ${DOJO_KIND[k][1]}</span></label>`).join('')}</div>
       <label>URL<input name="url" inputmode="url" value="${esc(x ? x.url : '')}" placeholder="https://youtu.be/… ／ TikTok ／ Spotify など"></label>
       <label>タイトル（作品名・アーティストなど）<input name="title" maxlength="120" value="${esc(x ? x.title : '')}" placeholder="例：〇〇 / MV「△△」"></label>
-      <label>✨ どんなところがいいか・取り入れたいところ<textarea name="good" rows="4" maxlength="5000" placeholder="例：サビ前で一瞬無音にする構成、カット割りのテンポ">${esc(x ? x.good : '')}</textarea></label>
-      <label>📓 どんな学びがあったか<textarea name="learn" rows="4" maxlength="5000" placeholder="例：音数を減らすとサビの広がりが際立つ">${esc(x ? x.learn : '')}</textarea></label>
+      <label>✨ いいところ・取り入れたいところ・学び<textarea name="good" rows="7" maxlength="5000" placeholder="例：サビ前で一瞬無音にする構成がいい。音数を減らすとサビの広がりが際立つので、次の曲で試したい">${esc(x ? [x.good, x.learn].filter(Boolean).join('\n\n') : '')}</textarea></label>
       <button class="btn gem" type="submit">${x ? '保存する' : 'メモする'}</button>
     </form>`;
   },
@@ -1827,7 +1826,7 @@ function closeSheet() {
   const w = $('#sheetWrap');
   w.classList.remove('open');
   const out = FX.sheetOut($('#sheet'));
-  if (window.MGX) setTimeout(syncLock, 260);
+  if (window.MGX) syncLock();
   if (out) { out.then(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; $('#sheet').style.transform = ''; } }); return; }
   setTimeout(() => { if (!w.classList.contains('open')) { w.hidden = true; $('#sheet').innerHTML = ''; } }, 250);
 }
@@ -1903,7 +1902,7 @@ async function handleForm(kind, f, btn) {
       return;
     }
     if (kind === 'dojo') {
-      applyBoot(await api('saveDojo', { id: f.dataset.id || '', kind: v('kind'), url: v('url'), title: v('title'), good: v('good'), learn: v('learn') }));
+      applyBoot(await api('saveDojo', { id: f.dataset.id || '', kind: v('kind'), url: v('url'), title: v('title'), good: v('good'), learn: '' }));
       closeSheet(); if (S.view !== 'dojo') S.view = 'dojo'; refreshAll(); toast(f.dataset.id ? '保存しました' : '道場にメモしました 🥋');
       return;
     }
@@ -2416,7 +2415,7 @@ function dojoSite(url) {
   return hit ? { icon: hit[1], name: hit[2], thumb: '' } : { icon: '', name: u ? 'リンク' : '', thumb: '' };
 }
 function viewDojo() {
-  const list = S.dojo.filter(d => (!S.dojoWho || d.author === S.dojoWho) && (!S.dojoKind || d.kind === S.dojoKind || (S.dojoKind !== 'both' && d.kind === 'both')))
+  const list = S.dojo.filter(d => (!S.dojoWho || d.author === S.dojoWho) && (!S.dojoKind || d.kind === S.dojoKind || d.kind === 'both'))
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const chip = (act, val, cur, label, color) => `<button class="tg-chip ${cur === val ? 'on' : ''}" data-act="${act}" data-v="${val}" ${color ? `style="--c:${color}"` : ''}>${label}</button>`;
   return `<h2 class="page-title">サニくる道場</h2>
@@ -2424,7 +2423,7 @@ function viewDojo() {
   <button class="btn gem" data-act="form" data-form="dojo">＋ 学びをメモする</button>
   <div class="dojo-filters">
     <div>${chip('dojoWho', '', S.dojoWho, 'みんな')}${S.members.map(m => chip('dojoWho', m.id, S.dojoWho, esc(m.name), m.color)).join('')}</div>
-    <div>${chip('dojoKind', '', S.dojoKind, 'すべて')}${chip('dojoKind', 'video', S.dojoKind, '🎬 映像')}${chip('dojoKind', 'music', S.dojoKind, '🎵 楽曲')}${chip('dojoKind', 'both', S.dojoKind, '🎬🎵 両方')}</div>
+    <div>${chip('dojoKind', '', S.dojoKind, 'すべて')}${chip('dojoKind', 'video', S.dojoKind, '🎬 映像')}${chip('dojoKind', 'music', S.dojoKind, '🎵 楽曲')}</div>
   </div>
   <p class="muted small" style="margin:0 2px 8px">${list.length}件</p>
   <div class="dojo-list">${list.length ? list.map(d => {
@@ -2436,8 +2435,7 @@ function viewDojo() {
         ${site.thumb ? `<img class="dj-thumb" src="${site.thumb}" alt="" loading="lazy">` : ''}
         <span class="dj-url">${site.icon ? `<img src="https://cdn.simpleicons.org/${site.icon}/ffffff" alt="">` : '🔗'}<b>${esc(d.title || site.name)}</b><small>${esc(d.url)}</small></span>
       </a>` : `<b class="dj-title">${esc(d.title)}</b>`}
-      ${d.good ? `<div class="dj-sec"><div class="dj-lbl">✨ いいところ・取り入れたいところ</div><p>${linkify(d.good)}</p></div>` : ''}
-      ${d.learn ? `<div class="dj-sec"><div class="dj-lbl">📓 学び</div><p>${linkify(d.learn)}</p></div>` : ''}
+      ${d.good || d.learn ? `<div class="dj-sec"><div class="dj-lbl">✨ いいところ・取り入れたいところ・学び</div><p>${linkify([d.good, d.learn].filter(Boolean).join('\n\n'))}</p></div>` : ''}
       ${mine ? `<div class="memo-btns" style="margin-top:8px"><button class="btn ghost sm" data-act="form" data-form="dojo" data-id="${esc(d.id)}">✎ 編集</button><button class="btn danger sm" data-act="confirmDel" data-type="dojo" data-id="${esc(d.id)}" data-label="${esc(d.title || 'メモ')}">削除</button></div>` : ''}
     </article>`;
   }).join('') : '<p class="empty-msg">まだメモはありません。<br>いいなと思った映像や曲を、最初のひとつとして残してみよう！</p>'}</div>`;

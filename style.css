@@ -731,7 +731,6 @@ form[data-form=event][data-kind=personal] .only-group{display:none}
 /* ===== アニメーション拡張（GSAP / Lottie / Three.js / Locomotive・Lenis / Auto Animate） ===== */
 html.lenis,html.lenis body{height:auto}
 .lenis.lenis-smooth{scroll-behavior:auto!important}
-.lenis.lenis-stopped{overflow:hidden}
 .gs-ch{display:inline-block;will-change:transform}
 /* 画面に入ったら見出しの下に光る線が伸びる（Locomotive の is-inview） */
 .sec{position:relative}
@@ -879,3 +878,5 @@ html.lenis,html.lenis body{height:auto}
 .dj-sec{margin-top:10px}
 .dj-lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
 .dj-sec p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:color-mix(in oklab,var(--c) 45%,#fff)}
+.home-last{margin-top:16px}
+.ev-memos .ev-post{color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:4px 8px;margin-top:2px;width:max-content}
