@@ -857,3 +857,25 @@ html.lenis,html.lenis body{height:auto}
 .idea-text{color:color-mix(in oklab,var(--c) 62%,#fff)}
 .idea{background:color-mix(in oklab,var(--c) 7%,var(--surface2))}
 .idea-top{justify-content:flex-start;gap:6px;align-items:center}
+
+/* サニくる道場 */
+.dojo-filters{display:grid;gap:6px;margin:12px 0 6px}
+.dojo-filters>div{display:flex;flex-wrap:wrap;gap:6px}
+.tg-chip{padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:12px;color:var(--muted)}
+.tg-chip[style*="--c"]{color:var(--c)}
+.tg-chip.on{border-color:var(--c,var(--garnet-hi));background:color-mix(in oklab,var(--c,#e0115f) 22%,var(--surface));color:#fff;font-weight:700}
+.dojo-list{display:grid;gap:12px}
+.dojo{padding:12px 14px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--c)}
+.dj-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.dj-kind{font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.07)}
+.dj-top .muted{margin-left:auto}
+.dj-link{display:block;text-decoration:none;color:var(--text);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface2)}
+.dj-thumb{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
+.dj-url{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center;padding:8px 10px}
+.dj-url img{width:22px;height:22px;grid-row:span 2}
+.dj-url b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dj-url small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dj-title{display:block;font-size:15px}
+.dj-sec{margin-top:10px}
+.dj-lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
+.dj-sec p{margin:0;font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:color-mix(in oklab,var(--c) 45%,#fff)}

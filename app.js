@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {},
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoWho: '', dojoKind: '',
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -368,7 +368,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -466,13 +466,13 @@ function render() {
   if (!S.me) return;
   renderHeader();
   $$('.tabbar [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
-  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala }[S.view] || viewCalendar;
+  const v = { calendar: viewCalendar, works: viewWorks, tasks: viewTasks, settings: viewSettings, board: viewBoard, mandala: viewMandala, dojo: viewDojo }[S.view] || viewCalendar;
   $('#view').innerHTML = v();
   afterViewRender();
 }
 function renderHeader() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="hd-btn ${S.view === 'dojo' ? 'on' : ''}" data-act="nav" data-view="dojo" aria-label="サニくる道場">🥋<span>道場</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
 }
 function afterViewRender() {
   // 画面が変わったときだけ入場アニメーション（同じ画面の更新では動かさない）
@@ -1287,15 +1287,17 @@ function lyricPanel(t, parts) {
   if (!parts) return '<div id="lyPanel" class="ly-panel"><div class="lt-load" data-lottie="lottie/loader.json"></div></div>';
   const live = parts.filter(x => x.status !== 'skip');
   const ok = live.filter(x => x.status === 'ok').length;
-  const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.writer !== S.me.id && x.status === 'review' && !splitIds(x.approvals).includes(S.me.id))).length;
+  const writers = [...new Set(live.map(x => x.writer))];
+  const reviewersFor = w => S.members.filter(m => m.id !== w && writers.includes(m.id));
+  const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.status === 'review' && reviewersFor(x.writer).some(m => m.id === S.me.id) && !splitIds(x.approvals).includes(S.me.id))).length;
   return `<div id="lyPanel" class="ly-panel">
     <div class="ly-top"><b>✍️ 歌詞の担当と確認</b><span>OK ${ok}/${live.length}</span></div>
-    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、ほかの2人が確認して「OK」を押します。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
+    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、<b>ほかの歌詞担当</b>が確認して「OK」を押します（担当が1人だけなら確認なしでOK）。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
     ${parts.map(x => {
       const w = mem(x.writer), mine = x.writer === S.me.id, [stLabel, stCls] = LY_ST[x.status] || LY_ST[''];
       const ap = splitIds(x.approvals);
-      const reviewers = S.members.filter(m => m.id !== x.writer);
-      const canReview = !mine && x.status === 'review' && !ap.includes(S.me.id);
+      const reviewers = reviewersFor(x.writer);
+      const canReview = !mine && x.status === 'review' && reviewers.some(m => m.id === S.me.id) && !ap.includes(S.me.id);
       return `<div class="ly-part st-${stCls}" style="--c:${w.color}">
         <div class="lp-head">
           <span class="lp-sec">${x.time ? `<time>${esc(x.time)}〜</time>` : ''}${esc(x.label || '歌詞')}</span>
@@ -1622,7 +1624,7 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信', dojo: '道場のメモ' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
@@ -1668,6 +1670,18 @@ const FORMS = {
         <button class="btn ghost sm" data-act="form" data-form="release" data-id="${esc(x.id)}">✎ 編集</button>
         ${canDel ? `<button class="btn danger sm" data-act="confirmDel" data-type="release" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button>` : '<span></span>'}
       </div>`;
+  },
+  dojo(_, o = {}) {
+    const x = o.id ? S.dojo.find(d => d.id === o.id) : null;
+    const kind = x ? x.kind : 'video';
+    return `<form data-form="dojo" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? 'メモを編集' : '🥋 学びをメモする')}
+      <div class="seg kind-seg">${Object.keys(DOJO_KIND).map(k => `<label class="seg-i"><input type="radio" name="kind" value="${k}" ${k === kind ? 'checked' : ''}><span>${DOJO_KIND[k][0]} ${DOJO_KIND[k][1]}</span></label>`).join('')}</div>
+      <label>URL<input name="url" inputmode="url" value="${esc(x ? x.url : '')}" placeholder="https://youtu.be/… ／ TikTok ／ Spotify など"></label>
+      <label>タイトル（作品名・アーティストなど）<input name="title" maxlength="120" value="${esc(x ? x.title : '')}" placeholder="例：〇〇 / MV「△△」"></label>
+      <label>✨ どんなところがいいか・取り入れたいところ<textarea name="good" rows="4" maxlength="5000" placeholder="例：サビ前で一瞬無音にする構成、カット割りのテンポ">${esc(x ? x.good : '')}</textarea></label>
+      <label>📓 どんな学びがあったか<textarea name="learn" rows="4" maxlength="5000" placeholder="例：音数を減らすとサビの広がりが際立つ">${esc(x ? x.learn : '')}</textarea></label>
+      <button class="btn gem" type="submit">${x ? '保存する' : 'メモする'}</button>
+    </form>`;
   },
   links() {
     const list = S.links.slice().sort((a, b) => Number(a.order) - Number(b.order));
@@ -1888,6 +1902,11 @@ async function handleForm(kind, f, btn) {
       closeSheet(); refreshAll(); toast(days.length ? '空き時間を保存しました' : '変更はありませんでした');
       return;
     }
+    if (kind === 'dojo') {
+      applyBoot(await api('saveDojo', { id: f.dataset.id || '', kind: v('kind'), url: v('url'), title: v('title'), good: v('good'), learn: v('learn') }));
+      closeSheet(); if (S.view !== 'dojo') S.view = 'dojo'; refreshAll(); toast(f.dataset.id ? '保存しました' : '道場にメモしました 🥋');
+      return;
+    }
     if (kind === 'lyRevise') {
       closeSheet();
       await lyCall('reviewLyricPart', { idx: f.dataset.idx, ok: false, note: v('note') }, null, '修正をお願いしました ✎');
@@ -2063,7 +2082,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply', dojo: 'deleteDojo' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -2384,6 +2403,46 @@ function snsBar(withEdit) {
   ${!list.length && withEdit ? '<p class="hint">まだ登録されていません。「SNSを登録」から YouTube・Instagram・TikTok などのURLを入れてください。</p>' : ''}`;
 }
 
+// ---------- サニくる道場（影響を受けた・学びになった映像や楽曲のメモ） ----------
+const DOJO_KIND = { video: ['🎬', '映像'], music: ['🎵', '楽曲'], both: ['🎬🎵', '映像＋楽曲'] };
+/** URLからサービスを判定（アイコンとサムネイル用） */
+function dojoSite(url) {
+  const u = String(url || '');
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (yt) return { icon: 'youtube', name: 'YouTube', thumb: `https://i.ytimg.com/vi/${yt[1]}/mqdefault.jpg` };
+  const map = [['tiktok.com', 'tiktok', 'TikTok'], ['instagram.com', 'instagram', 'Instagram'], ['spotify.com', 'spotify', 'Spotify'], ['music.apple.com', 'applemusic', 'Apple Music'],
+    ['soundcloud.com', 'soundcloud', 'SoundCloud'], ['nicovideo.jp', 'niconico', 'ニコニコ'], ['x.com', 'x', 'X'], ['twitter.com', 'x', 'X']];
+  const hit = map.find(([d]) => u.includes(d));
+  return hit ? { icon: hit[1], name: hit[2], thumb: '' } : { icon: '', name: u ? 'リンク' : '', thumb: '' };
+}
+function viewDojo() {
+  const list = S.dojo.filter(d => (!S.dojoWho || d.author === S.dojoWho) && (!S.dojoKind || d.kind === S.dojoKind || (S.dojoKind !== 'both' && d.kind === 'both')))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const chip = (act, val, cur, label, color) => `<button class="tg-chip ${cur === val ? 'on' : ''}" data-act="${act}" data-v="${val}" ${color ? `style="--c:${color}"` : ''}>${label}</button>`;
+  return `<h2 class="page-title">サニくる道場</h2>
+  <p class="muted small" style="margin:-4px 2px 12px">影響を受けた・学びになった映像や楽曲のメモ帳。いいところ・取り入れたいところと、学んだことを残していこう。</p>
+  <button class="btn gem" data-act="form" data-form="dojo">＋ 学びをメモする</button>
+  <div class="dojo-filters">
+    <div>${chip('dojoWho', '', S.dojoWho, 'みんな')}${S.members.map(m => chip('dojoWho', m.id, S.dojoWho, esc(m.name), m.color)).join('')}</div>
+    <div>${chip('dojoKind', '', S.dojoKind, 'すべて')}${chip('dojoKind', 'video', S.dojoKind, '🎬 映像')}${chip('dojoKind', 'music', S.dojoKind, '🎵 楽曲')}${chip('dojoKind', 'both', S.dojoKind, '🎬🎵 両方')}</div>
+  </div>
+  <p class="muted small" style="margin:0 2px 8px">${list.length}件</p>
+  <div class="dojo-list">${list.length ? list.map(d => {
+    const a = mem(d.author), site = dojoSite(d.url), [ic, kl] = DOJO_KIND[d.kind] || DOJO_KIND.video;
+    const mine = d.author === S.me.id || isAdminMode();
+    return `<article class="dojo" style="--c:${a.color}">
+      <div class="dj-top"><span class="dj-kind">${ic} ${kl}</span><span class="who" style="--c:${a.color}">${esc(a.name)}</span><span class="muted small">${timeLabel(d.createdAt)}</span></div>
+      ${d.url ? `<a class="dj-link" href="${esc(d.url)}" target="_blank" rel="noopener">
+        ${site.thumb ? `<img class="dj-thumb" src="${site.thumb}" alt="" loading="lazy">` : ''}
+        <span class="dj-url">${site.icon ? `<img src="https://cdn.simpleicons.org/${site.icon}/ffffff" alt="">` : '🔗'}<b>${esc(d.title || site.name)}</b><small>${esc(d.url)}</small></span>
+      </a>` : `<b class="dj-title">${esc(d.title)}</b>`}
+      ${d.good ? `<div class="dj-sec"><div class="dj-lbl">✨ いいところ・取り入れたいところ</div><p>${linkify(d.good)}</p></div>` : ''}
+      ${d.learn ? `<div class="dj-sec"><div class="dj-lbl">📓 学び</div><p>${linkify(d.learn)}</p></div>` : ''}
+      ${mine ? `<div class="memo-btns" style="margin-top:8px"><button class="btn ghost sm" data-act="form" data-form="dojo" data-id="${esc(d.id)}">✎ 編集</button><button class="btn danger sm" data-act="confirmDel" data-type="dojo" data-id="${esc(d.id)}" data-label="${esc(d.title || 'メモ')}">削除</button></div>` : ''}
+    </article>`;
+  }).join('') : '<p class="empty-msg">まだメモはありません。<br>いいなと思った映像や曲を、最初のひとつとして残してみよう！</p>'}</div>`;
+}
+
 // ---------- 掲示板・メモ ----------
 /** メモに紐づける予定の候補：会議を先に、近い日付から */
 function memoEventOptions(sel) {
@@ -2550,7 +2609,7 @@ function aiPrompt() {
 ## アプリの構成
 - フロント：GitHub Pages の静的サイト（index.html / style.css / app.js / config.js / manifest.json / OneSignalSDKWorker.js / icons/）。フレームワークなしの素のJavaScript
 - サーバー：Google Apps Script（Code.gs）＋ Googleスプレッドシート。フロントから fetch で JSON を POST（Content-Type は text/plain）
-- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / links / eventIdeas / sessions
+- データのシート：tasks / projects / messages / events / avail / shifts / shiftImages / ideas / memos / releases / jackets / lyricsync / mandala / offdays / memoReplies / memoMarks / links / eventIdeas / lyricParts / dojo / sessions
 - 通知：OneSignal（GASからAPIで送信）
 - ログイン：メンバーごとのログインコード。隠し管理者画面はGAS側のパスワード（スクリプト プロパティ ADMIN_PASSWORD）で照合
 - デザイン：黒背景・白文字・ガーネット（赤い宝石）のアクセント。メンバー色 Katsunii＝青 / l0-fer＝緑 / mitudess＝赤
@@ -2820,6 +2879,8 @@ document.addEventListener('click', e => {
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
     case 'calShift': S.calShift = !S.calShift; store.set('mg_calShift', S.calShift ? '1' : '0'); render(); break;
     case 'memoReact': reactMemo(el); break;
+    case 'dojoWho': S.dojoWho = el.dataset.v; render(); break;
+    case 'dojoKind': S.dojoKind = el.dataset.v; render(); break;
     case 'lySave': { const ta = $(`#lyPanel .lp-text[data-idx="${el.dataset.idx}"]`); lyCall('saveLyricPart', { idx: el.dataset.idx, text: ta ? ta.value : '' }, el, '確認に出しました 👀'); break; }
     case 'lyOk': lyCall('reviewLyricPart', { idx: el.dataset.idx, ok: true }, el, 'OKしました ✓'); break;
     case 'lyRevise': openSheet(`<form data-form="lyRevise" data-idx="${esc(el.dataset.idx)}">${sheetHead('修正のお願い')}<label>どこをどう直してほしいか<textarea name="note" rows="3" maxlength="500" required placeholder="例：2行目の言葉をもっと明るく"></textarea></label><button class="btn danger" type="submit">担当にお願いする</button></form>`); break;
@@ -3038,7 +3099,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
-  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [];
+  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [], dojo = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -3062,7 +3123,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas), dojo: cp(dojo) };
   };
 
   const H = {
@@ -3200,6 +3261,8 @@ const Mock = (() => {
     postProjectChat(r, m) { msgs.push({ id: 'm' + (++seq), taskId: r.projectId, author: m.id, type: 'chat', text: r.text, progress: '', createdAt: now() }); return H.getProjectChat(r); },
     addEventIdea(r, m) { eventIdeas.push({ id: 'ei' + (++seq), eventId: r.eventId, author: m.id, text: r.text, createdAt: now() }); return boot(m); },
     deleteEventIdea(r, m) { const i = eventIdeas.findIndex(x => x.id === r.id); if (i >= 0) eventIdeas.splice(i, 1); return boot(m); },
+    saveDojo(r, m) { const o = { kind: r.kind, url: r.url, title: r.title, good: r.good, learn: r.learn, updatedAt: now() }; if (r.id) Object.assign(dojo.find(d => d.id === r.id), o); else dojo.push(Object.assign({ id: 'dj' + (++seq), author: m.id, createdAt: now() }, o)); return boot(m); },
+    deleteDojo(r, m) { const i = dojo.findIndex(d => d.id === r.id); if (i >= 0) dojo.splice(i, 1); return boot(m); },
     saveLink(r, m) { links.push({ id: 'l' + (++seq), platform: r.platform, url: r.url, label: r.label || '', order: String(links.length + 1) }); return boot(m); },
     deleteLink(r, m) { const i = links.findIndex(x => x.id === r.id); if (i >= 0) links.splice(i, 1); return boot(m); },
     saveOffday(r, m) { const x = offdays.find(o => o.date === r.date); if (x) x.note = r.note || ''; else offdays.push({ id: 'o' + (++seq), date: date(r.date), note: r.note || '', createdBy: m.id, createdAt: now() }); return boot(m); },
