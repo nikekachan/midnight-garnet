@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoWho: '', dojoKind: '',
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoComments: [], dojoWho: '', dojoKind: '',
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -433,7 +433,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo', 'dojoComments'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -1693,7 +1693,7 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信', dojo: '道場のメモ' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信', dojo: '道場のメモ', dojoComment: 'コメント' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
@@ -2001,6 +2001,11 @@ async function handleForm(kind, f, btn) {
       openSheet(FORMS.links()); render(); toast('SNSを追加しました 🔗');
       return;
     }
+    if (kind === 'dojoComment') {
+      applyBoot(await api('commentDojo', { dojoId: f.dataset.dojo, text: v('text') }));
+      refreshAll(); toast('コメントしました 💬');
+      return;
+    }
     if (kind === 'memoReply') {
       applyBoot(await api('replyMemo', { memoId: f.dataset.memo, text: v('text') }));
       refreshAll(); toast('返信しました 💬');
@@ -2150,7 +2155,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply', dojo: 'deleteDojo' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply', dojo: 'deleteDojo', dojoComment: 'deleteDojoComment' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -2506,8 +2511,26 @@ function viewDojo() {
       </a>` : `<b class="dj-title">${esc(d.title)}</b>`}
       ${d.good || d.learn ? `<div class="dj-sec"><div class="dj-lbl">✨ いいところ・取り入れたいところ・学び</div><p>${linkify([d.good, d.learn].filter(Boolean).join('\n\n'))}</p></div>` : ''}
       ${mine ? `<div class="memo-btns" style="margin-top:8px"><button class="btn ghost sm" data-act="form" data-form="dojo" data-id="${esc(d.id)}">✎ 編集</button><button class="btn danger sm" data-act="confirmDel" data-type="dojo" data-id="${esc(d.id)}" data-label="${esc(d.title || 'メモ')}">削除</button></div>` : ''}
+      ${dojoComments(d)}
     </article>`;
   }).join('') : '<p class="empty-msg">まだメモはありません。<br>いいなと思った映像や曲を、最初のひとつとして残してみよう！</p>'}</div>`;
+}
+
+/** 道場のメモへのコメント（掲示板の返信と同じ見た目） */
+function dojoComments(d) {
+  const cs = S.dojoComments.filter(c => c.dojoId === d.id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  return `<div class="replies chat">
+    ${cs.length ? `<div class="r-head">💬 コメント ${cs.length}件</div>` : ''}
+    ${cs.map(c => { const mine = c.author === S.me.id; return `<div class="m ${mine ? 'mine' : ''}" style="--c:${mem(c.author).color}">
+      ${mine ? '' : `<div class="m-name" style="color:${mem(c.author).color}">${esc(mem(c.author).name)}</div>`}
+      <div class="bubble">${linkify(c.text)}</div>
+      <time>${timeLabel(c.createdAt)}${mine || isAdminMode() ? ` · <button class="reply-del" data-act="confirmDel" data-type="dojoComment" data-id="${esc(c.id)}" data-label="コメント">削除</button>` : ''}</time>
+    </div>`; }).join('')}
+    <form data-form="dojoComment" data-dojo="${esc(d.id)}" class="reply-form composer-lite">
+      <textarea name="text" rows="1" maxlength="3000" required placeholder="コメントする…"></textarea>
+      <button class="send" type="submit" aria-label="送信"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    </form>
+  </div>`;
 }
 
 // ---------- 掲示板・メモ ----------
@@ -3166,7 +3189,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
-  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [], dojo = [];
+  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [], dojo = [], dojoComments = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -3190,7 +3213,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas), dojo: cp(dojo) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas), dojo: cp(dojo), dojoComments: cp(dojoComments) };
   };
 
   const H = {
@@ -3329,6 +3352,8 @@ const Mock = (() => {
     addEventIdea(r, m) { eventIdeas.push({ id: 'ei' + (++seq), eventId: r.eventId, author: m.id, text: r.text, createdAt: now() }); return boot(m); },
     deleteEventIdea(r, m) { const i = eventIdeas.findIndex(x => x.id === r.id); if (i >= 0) eventIdeas.splice(i, 1); return boot(m); },
     saveDojo(r, m) { const o = { kind: r.kind, url: r.url, title: r.title, good: r.good, learn: r.learn, updatedAt: now() }; if (r.id) Object.assign(dojo.find(d => d.id === r.id), o); else dojo.push(Object.assign({ id: 'dj' + (++seq), author: m.id, createdAt: now() }, o)); return boot(m); },
+    commentDojo(r, m) { dojoComments.push({ id: 'dc' + (++seq), dojoId: r.dojoId, author: m.id, text: String(r.text || ''), createdAt: now() }); return boot(m); },
+    deleteDojoComment(r, m) { const i = dojoComments.findIndex(x => x.id === r.id); if (i >= 0) dojoComments.splice(i, 1); return boot(m); },
     deleteDojo(r, m) { const i = dojo.findIndex(d => d.id === r.id); if (i >= 0) dojo.splice(i, 1); return boot(m); },
     saveLink(r, m) { links.push({ id: 'l' + (++seq), platform: r.platform, url: r.url, label: r.label || '', order: String(links.length + 1) }); return boot(m); },
     deleteLink(r, m) { const i = links.findIndex(x => x.id === r.id); if (i >= 0) links.splice(i, 1); return boot(m); },
