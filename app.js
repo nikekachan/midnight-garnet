@@ -2547,9 +2547,9 @@ const repliesOf = id => S.memoReplies.filter(r => r.memoId === id).sort((a, b) =
 /** 最後に動きがあった時刻（本文の編集か、返信） */
 const memoActivity = x => repliesOf(x.id).reduce((t, r) => r.createdAt > t ? r.createdAt : t, String(x.updatedAt || x.createdAt));
 const readAt = (memoId, mid) => (S.memoMarks.find(k => k.memoId === memoId && k.memberId === mid && k.kind === 'read') || {}).at || '';
-/** その人にとっての「新しい動き」（自分の投稿・返信は数えない） */
-const activityFor = (x, mid) => repliesOf(x.id).filter(r => r.author !== mid)
-  .reduce((t, r) => r.createdAt > t ? r.createdAt : t, x.author !== mid ? String(x.updatedAt || x.createdAt) : '');
+/** その人にとっての「新しい動き」（自分の投稿は既読あつかい・自分の返信は数えない） */
+const activityFor = (x, mid) => x.author === mid ? '' : repliesOf(x.id).filter(r => r.author !== mid)
+  .reduce((t, r) => r.createdAt > t ? r.createdAt : t, String(x.updatedAt || x.createdAt));
 const hasRead = (x, mid) => { const act = activityFor(x, mid); return !act || readAt(x.id, mid) >= act; };
 const unreadMemos = () => S.me ? S.memos.filter(x => !hasRead(x, S.me.id)) : [];
 let readSending = false;
@@ -2561,16 +2561,19 @@ function watchMemoReads() {
   const timers = {};
   readObs = new IntersectionObserver(entries => entries.forEach(en => {
     const id = en.target.dataset.memo;
-    if (en.isIntersecting && en.intersectionRatio >= 0.5) {
+    // 半分以上見えたら。縦に長い投稿は半分も入りきらないので、画面の4割以上を占めていればOK
+    if (en.isIntersecting && (en.intersectionRatio >= 0.5 || en.intersectionRect.height >= innerHeight * 0.4)) {
       timers[id] = setTimeout(() => { readQueue.add(id); readObs.unobserve(en.target); clearTimeout(readTimer); readTimer = setTimeout(() => markMemosRead([...readQueue]), 600); }, 800);
     } else clearTimeout(timers[id]);
-  }), { threshold: [0, 0.5, 1] });
+  }), { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1] });
   $$('.memo[data-memo]').forEach(el => { if (unread.has(el.dataset.memo)) readObs.observe(el); });
 }
 function markMemosRead(only) {
   const ids = (only || unreadMemos().map(x => x.id)).filter(Boolean);
+  if (!ids.length) return;
+  // 送信中なら取りこぼさず、終わってからもう一度
+  if (readSending) { ids.forEach(id => readQueue.add(id)); clearTimeout(readTimer); readTimer = setTimeout(() => markMemosRead([...readQueue]), 800); return; }
   readQueue = new Set();
-  if (!ids.length || readSending) return;
   readSending = true;
   const at = new Date().toISOString();
   ids.forEach(id => {
