@@ -2380,6 +2380,8 @@ const MD_POS = [0, 1, 2, 3, 5, 6, 7, 8];
 const MD_ST = ['未着手', '進行中', '達成'];
 const MD_HUES = ['#FF7A70', '#FFB052', '#E3CF3A', '#5ACB84', '#4FC3E3', '#7E95FF', '#BF85F2', '#F27AB9'];
 const mdDef = key => key === 'meta' ? { name: '', period: '', goal: '' } : key[0] === 't' ? { label: '', color: Number(key.slice(1)) } : { text: '', st: 0 };
+// x テーマ-行動-人：11/1までの準備タスク（各自の目標 s とは別に持つ。上書きしないため）
+const mdPrep = (t, j, k) => mdGet(`x${t}-${j}-${k}`);
 const mdGet = key => Object.assign(mdDef(key), S.mandala[key] || {});
 const mdTheme = t => mdGet('t' + t), mdItem = (t, j) => mdGet(`i${t}-${j}`), mdSub = (t, j, k) => mdGet(`s${t}-${j}-${k}`);
 const mdMem = k => S.members[k] || { id: '', name: `メンバー${k + 1}`, color: '#888' };
@@ -2456,7 +2458,7 @@ function mdEditorHtml() {
     h += `<div class="md-detail"><div class="md-ed-head"><div style="min-width:0"><div class="kind">${esc(th.label || `テーマ${t + 1}`)} › 行動</div><h3>${esc(it.text || '（行動が未入力です）')}</h3>${mdBy(`i${t}-${j}`)}</div><button type="button" class="btn ghost sm" style="width:auto" data-act="mdItem" data-j="${j}">閉じる</button></div>
       <div class="md-cards">${[0, 1, 2].map(k => {
         const m = mdMem(k), key = `s${t}-${j}-${k}`, mine = m.id === S.me.id;
-        return `<div class="md-card ${mine ? 'mine' : ''}" style="--mc:${m.color}"><div class="md-mh"><i></i><span>${esc(m.name)}</span>${mine ? '<em>あなた</em>' : ''}</div>${mdField(key, 'text', `${m.name}の具体的な目標`)}${mdStBtn(key, m.color)}${mdBy(key)}</div>`;
+        return `<div class="md-card ${mine ? 'mine' : ''}" style="--mc:${m.color}"><div class="md-mh"><i></i><span>${esc(m.name)}</span>${mine ? '<em>あなた</em>' : ''}</div>${mdField(key, 'text', `${m.name}の具体的な目標`)}${mdStBtn(key, m.color)}${mdBy(key)}${(p => p.text ? `<div class="md-prep"><small>📌 準備タスク${p.due ? `（〜${md(p.due)}）` : ''}</small><span>${esc(p.text)}</span>${mine || isAdminMode() ? mdStBtn(`x${t}-${j}-${k}`, m.color) : `<span class="md-st ro" data-st="${p.st}" style="--c:${m.color}"><i></i>${MD_ST[p.st]}</span>`}</div>` : '')(mdPrep(t, j, k))}</div>`;
       }).join('')}</div></div>`;
   }
   h += `<div class="md-nav"><button type="button" class="btn ghost sm" data-act="mdStep" data-d="-1">← 前</button>${!isCenter ? '<button type="button" class="btn ghost sm" data-act="mdGo" data-b="4">中心へ</button>' : ''}<button type="button" class="btn ghost sm" data-act="mdStep" data-d="1">次 →</button></div>`;
@@ -2479,11 +2481,11 @@ function viewMandala() {
   <div class="panel md-editor" id="mdEditor">${mdEditorHtml()}</div>
   <div class="panel"><h3>最近の編集</h3>${recent.length ? `<ul class="md-act">${recent.map(([k, v]) => `<li><span>${v.by ? `<b style="color:${mem(v.by).color}">${esc(mem(v.by).name)}</b> · ` : ''}${esc(mdPlace(k))}</span><time>${timeLabel(new Date(v.at).toISOString())}</time></li>`).join('')}</ul>` : '<p class="muted small">まだ編集の記録はありません</p>'}</div>`;
 }
-/** 個人のマンダラタスク：3人それぞれの目標（s テーマ-行動-人）のうち、書かれているものを人ごとに並べる */
+/** 個人のマンダラタスク：準備タスク（x テーマ-行動-人）のうち、書かれているものを人ごとに並べる */
 function mdTasksOf(k) {
   const out = [];
   for (let t = 0; t < 8; t++) for (let j = 0; j < 8; j++) {
-    const key = `s${t}-${j}-${k}`, v = mdGet(key);
+    const key = `x${t}-${j}-${k}`, v = mdGet(key);
     if (v.text) out.push({ key, t, j, text: v.text, st: v.st || 0, due: v.due || '' });
   }
   return out.sort((a, b) => (a.st === 2) - (b.st === 2) || String(a.due || '9').localeCompare(String(b.due || '9')) || a.t - b.t || a.j - b.j);

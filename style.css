@@ -919,3 +919,6 @@ html.lenis,html.lenis body{height:auto}
 .md-go .due{color:var(--text)} .md-go .due.late{color:var(--ng,#ff6b6b);font-weight:700}
 .md-who .md-st{width:auto;border:1px solid var(--line);border-radius:99px;padding:4px 10px;white-space:nowrap}
 .md-st.ro{opacity:.85}
+.md-prep{border-top:1px dashed var(--line);padding:6px 8px 2px;display:grid;gap:2px}
+.md-prep small{font-size:11px;color:var(--mc)} .md-prep span{font-size:13px;line-height:1.45}
+.md-prep .md-st{border-top:0;padding-left:0}
