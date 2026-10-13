@@ -365,8 +365,40 @@ async function busy(btn, fn, label = '送信中…') {
       }, { duration: 1.4, ease: [0.2, 0.7, 0.2, 1] });
     });
   });
+  // 雷の効果音（音声ファイルは使わず、その場で合成）。ブラウザは操作なしの再生を止めることがあるので、
+  // 画面に触れたら鳴らせるように待っておく
+  let ac = null;
+  try { ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume().catch(() => {}); } catch (e) { ac = null; }
+  const unlock = () => { if (ac && ac.state !== 'running') ac.resume().catch(() => {}); };
+  ['pointerdown', 'touchstart', 'keydown'].forEach(t => window.addEventListener(t, unlock, { once: true, passive: true }));
+  function thunder() {
+    if (!ac || ac.state !== 'running') return;
+    const t0 = ac.currentTime, sr = ac.sampleRate;
+    const buf = ac.createBuffer(1, sr * 3, sr), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const master = ac.createGain(); master.gain.value = 0.9;
+    const comp = ac.createDynamicsCompressor(); master.connect(comp); comp.connect(ac.destination);
+    const noise = (filterType, f0, f1, peak, attack, len, start = 0) => {
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const f = ac.createBiquadFilter(); f.type = filterType;
+      f.frequency.setValueAtTime(f0, t0 + start); f.frequency.exponentialRampToValueAtTime(f1, t0 + start + len);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0 + start);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + start + attack); g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + len);
+      src.connect(f); f.connect(g); g.connect(master); src.start(t0 + start, Math.random()); src.stop(t0 + start + len + 0.05);
+    };
+    // バリッ（鋭い破裂音）→ ドーン（低い爆発）→ ゴロゴロ（長い余韻）
+    noise('highpass', 2500, 800, 1.0, 0.003, 0.18);
+    noise('highpass', 1800, 600, 0.6, 0.003, 0.12, 0.09);
+    noise('lowpass', 900, 120, 1.0, 0.01, 0.9);
+    noise('lowpass', 260, 60, 0.9, 0.12, 2.6, 0.1);
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(70, t0); o.frequency.exponentialRampToValueAtTime(28, t0 + 0.8);
+    og.gain.setValueAtTime(0.0001, t0); og.gain.exponentialRampToValueAtTime(0.9, t0 + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
+    o.connect(og); og.connect(master); o.start(t0); o.stop(t0 + 1.2);
+  }
   // 三色の稲妻：画面を上から下へギザギザに走る
   function bolts() {
+    try { thunder(); } catch (e) {}
     const svg = $('.sp-bolts', el); if (!svg) return;
     const W = el.clientWidth, H = el.clientHeight, ns = 'http://www.w3.org/2000/svg';
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -407,6 +439,8 @@ async function busy(btn, fn, label = '送信中…') {
     A(el, { x: [0, -8, 7, -5, 3, 0], y: [0, 4, -3, 2, 0, 0] }, { duration: 0.45 });
   }
   A(0, 1, { duration: 0.01, delay: 4.8 }).then(finish);
+  // 余韻が終わったら音の準備を片付ける（他のアプリの音楽をじゃましないように）
+  setTimeout(() => { try { if (ac) ac.close(); } catch (e) {} }, 7500);
   setTimeout(finish, 7000); // 念のため（アニメーションが止まっても必ず閉じる）
 })();
 window.addEventListener('mg:splashdone', () => { if (S.me && !$('#app').hidden) { S.fxKey = ''; render(); } else FX.login(); });
