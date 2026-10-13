@@ -902,3 +902,20 @@ html.lenis,html.lenis body{height:auto}
   -webkit-text-stroke:.05em currentColor;text-shadow:0 0 10px #ff2d55,0 0 28px #ff2d55;animation:spTap 1.6s ease-in-out infinite}
 .sp-tap small{font-size:13px;color:rgba(255,255,255,.7);letter-spacing:.08em}
 @keyframes spTap{0%,100%{opacity:.45;transform:scale(.97)}50%{opacity:1;transform:scale(1.03)}}
+/* 個人のマンダラタスク */
+.md-mine{display:grid;gap:8px}
+.md-who{border:1px solid color-mix(in oklab,var(--mc) 40%,var(--line));border-radius:12px;background:color-mix(in oklab,var(--mc) 5%,var(--surface2));overflow:hidden}
+.md-who summary{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none}
+.md-who summary::-webkit-details-marker{display:none}
+.md-who summary>i{width:10px;height:10px;border-radius:50%;background:var(--mc);box-shadow:0 0 8px var(--mc)}
+.md-who summary em{font-style:normal;font-size:11px;color:var(--mc);border:1px solid var(--mc);border-radius:99px;padding:0 6px}
+.md-who summary span{margin-left:auto;font-size:12px;color:var(--muted)}
+.md-who ul{list-style:none;margin:0;padding:0 8px 8px;display:grid;gap:6px}
+.md-who li{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;border-left:3px solid var(--c);background:var(--surface);border-radius:8px;padding:6px 6px 6px 10px}
+.md-who li.done .md-go span{text-decoration:line-through;opacity:.6}
+.md-go{display:grid;gap:2px;text-align:left;min-width:0}
+.md-go small{font-size:11px;color:var(--muted)}
+.md-go span{font-size:14px;line-height:1.45}
+.md-go .due{color:var(--text)} .md-go .due.late{color:var(--ng,#ff6b6b);font-weight:700}
+.md-who .md-st{width:auto;border:1px solid var(--line);border-radius:99px;padding:4px 10px;white-space:nowrap}
+.md-st.ro{opacity:.85}

@@ -2473,10 +2473,39 @@ function viewMandala() {
     <div class="md-prog"><b id="mdNum">${d}</b><small> / 64 達成</small><div class="bar"><i id="mdBar" style="width:${d / 64 * 100}%"></i></div></div>
     <div class="legend">${[0, 1, 2].map(k => `<span><i style="--c:${mdMem(k).color}"></i>${esc(mdMem(k).name)}</span>`).join('')}</div>
   </div>
+  <div id="mdMine">${mdMineHtml()}</div>
   <div class="md-board" id="mdBoard">${mdBoardHtml()}</div>
   <p class="hint" style="margin:8px 2px 14px">行動のマスの下の3つの四角が、3人それぞれの目標です（書くと薄く色が付き、達成すると塗りつぶし）。マスを押すと下で編集できます。</p>
   <div class="panel md-editor" id="mdEditor">${mdEditorHtml()}</div>
   <div class="panel"><h3>最近の編集</h3>${recent.length ? `<ul class="md-act">${recent.map(([k, v]) => `<li><span>${v.by ? `<b style="color:${mem(v.by).color}">${esc(mem(v.by).name)}</b> · ` : ''}${esc(mdPlace(k))}</span><time>${timeLabel(new Date(v.at).toISOString())}</time></li>`).join('')}</ul>` : '<p class="muted small">まだ編集の記録はありません</p>'}</div>`;
+}
+/** 個人のマンダラタスク：3人それぞれの目標（s テーマ-行動-人）のうち、書かれているものを人ごとに並べる */
+function mdTasksOf(k) {
+  const out = [];
+  for (let t = 0; t < 8; t++) for (let j = 0; j < 8; j++) {
+    const key = `s${t}-${j}-${k}`, v = mdGet(key);
+    if (v.text) out.push({ key, t, j, text: v.text, st: v.st || 0, due: v.due || '' });
+  }
+  return out.sort((a, b) => (a.st === 2) - (b.st === 2) || String(a.due || '9').localeCompare(String(b.due || '9')) || a.t - b.t || a.j - b.j);
+}
+function mdMineHtml() {
+  const order = [0, 1, 2].sort((a, b) => (mdMem(b).id === S.me.id) - (mdMem(a).id === S.me.id));
+  const lists = order.map(k => ({ k, m: mdMem(k), list: mdTasksOf(k) })).filter(x => x.list.length);
+  if (!lists.length) return '';
+  return `<div class="panel md-mine"><h3>🎯 個人のマンダラタスク</h3>
+    <p class="muted small" style="margin:-4px 0 10px">「達成」にすると、3人に通知が届きます。項目を押すと、マンダラのその場所が開きます。</p>
+    ${lists.map(({ k, m, list }) => {
+      const mine = m.id === S.me.id || isAdminMode(), done = list.filter(x => x.st === 2).length;
+      return `<details class="md-who" style="--mc:${m.color}" ${m.id === S.me.id ? 'open' : ''}><summary><i></i><b>${esc(m.name)}</b>${m.id === S.me.id ? '<em>あなた</em>' : ''}<span>${done} / ${list.length} 達成</span></summary>
+      <ul>${list.map(x => {
+        const late = x.st !== 2 && x.due && x.due < today();
+        return `<li class="${x.st === 2 ? 'done' : ''}" style="--c:${mdHue(x.t)}">
+          <button type="button" class="md-go" data-act="mdJump" data-b="${MD_POS[x.t]}" data-j="${x.j}"><small>${esc(mdTheme(x.t).label || `テーマ${x.t + 1}`)} › ${esc(mdItem(x.t, x.j).text || '行動')}</small><span>${esc(x.text)}</span>${x.due ? `<small class="due ${late ? 'late' : ''}">〜${md(x.due)}${late ? '（期限切れ）' : ''}</small>` : ''}</button>
+          ${mine ? mdStBtn(x.key, m.color) : `<span class="md-st ro" data-st="${x.st}" style="--c:${m.color}"><i></i>${MD_ST[x.st]}</span>`}
+        </li>`;
+      }).join('')}</ul></details>`;
+    }).join('')}
+  </div>`;
 }
 function mdPlace(key) {
   if (key === 'meta') return 'チャートの名前・目標';
@@ -2487,6 +2516,7 @@ function mdPlace(key) {
 }
 function mdRefresh(editor = true) {
   const bd = $('#mdBoard'); if (bd) bd.innerHTML = mdBoardHtml();
+  const mm = $('#mdMine'); if (mm) { const open = $$('.md-who', mm).map(d => d.open); mm.innerHTML = mdMineHtml(); $$('.md-who', mm).forEach((d, i) => { if (open[i] !== undefined) d.open = open[i]; }); }
   const d = mdProgress(); if ($('#mdNum')) { $('#mdNum').textContent = d; $('#mdBar').style.width = (d / 64 * 100) + '%'; }
   if (editor && $('#mdEditor')) $('#mdEditor').innerHTML = mdEditorHtml();
 }
@@ -3099,6 +3129,7 @@ document.addEventListener('click', e => {
     case 'mdStep': mdSelect((S.mdSel + Number(el.dataset.d) + 9) % 9); break;
     case 'mdItem': { const j = Number(el.dataset.j); mdSelect(S.mdSel, S.mdItem === j ? undefined : j); break; }
     case 'mdColor': mdWrite('t' + MD_POS.indexOf(S.mdSel), { color: Number(el.dataset.k) }, 0); mdRefresh(); break;
+    case 'mdJump': mdSelect(Number(el.dataset.b), Number(el.dataset.j)); break;
     case 'mdSt': { const k = el.dataset.key, s2 = (mdGet(k).st + 1) % 3; mdWrite(k, { st: s2 }, 0); mdRefresh(); if (s2 === 2) { toast('達成！ 💫'); FX.confetti(); } break; }
     case 'relOpen': openSheet(FORMS.releaseView(null, { id: el.dataset.id })); break;
     case 'minMonth': { const d = parseYmd(S.minMonth + '-01'); d.setMonth(d.getMonth() + Number(el.dataset.d)); S.minMonth = ymd(d).slice(0, 7); render(); break; }
