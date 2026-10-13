@@ -566,7 +566,7 @@ const shiftsOn = (mid, date) => {
     .map(f => ({ memberId: mid, date, start: f.start, end: f.end, note: f.note || '', fixed: true }));
 };
 function stateArr(mid, date, slots) {
-  // 何も入れていない時間は「予定なし＝集まれる（free）」として扱う
+  // 何も入れていない時間（free）は「集まれない」として扱う（◯を付けた時間だけが集まれる）
   const base = (slots || availRow(mid, date)).split('').map(c => c === '1' ? 'ok' : c === '2' ? 'ng' : 'free');
   shiftsOn(mid, date).forEach(sh => {
     const a = toMin(sh.start), b = toMin(sh.end);
@@ -599,7 +599,7 @@ function commonRanges(date, mode) {
   const st = S.members.map(m => ({ id: m.id, s: stateArr(m.id, date) }));
   const out = []; let cur = null;
   for (let i = SLOT0; i <= 48; i++) {
-    const who = i < 48 ? st.filter(x => x.s[i] === 'ok' || x.s[i] === 'free').map(x => x.id) : [];
+    const who = i < 48 ? st.filter(x => x.s[i] === 'ok').map(x => x.id) : [];
     const ok = mode === 3 ? who.length === S.members.length : who.length >= 2;
     const key = ok ? who.join(',') : '';
     if (cur && cur.key === key && key) { cur.end = i + 1; continue; }
@@ -782,7 +782,7 @@ function memberDay(mm, date) {
   if (ps.length) parts.push(`<span class="st-ps">個人の予定 ${ps.join('、')}</span>`);
   if (ok.length) parts.push(`<span class="st-ok">◯ ${ok.join('、')}</span>`);
   if (ng.length) parts.push(`<span class="st-ng">✕ ${ng.join('、')}</span>`);
-  return `<div class="mday"><span class="who" style="--c:${mm.color}">${esc(mm.name)}</span><div>${parts.join('') || '<span class="muted">予定なし（集まれる）</span>'}</div></div>`;
+  return `<div class="mday"><span class="who" style="--c:${mm.color}">${esc(mm.name)}</span><div>${parts.join('') || '<span class="muted">未入力（集まれない）</span>'}</div></div>`;
 }
 
 function eventCard(e) {
@@ -809,7 +809,7 @@ function viewFree() {
   for (let i = SLOT0; i < 48; i++) {
     grid += `<div class="wk-t">${i % 2 === 0 ? slotTime(i) : ''}</div>`;
     grid += cols.map(c => {
-      const who = c.st.filter(x => x.s[i] === 'ok' || x.s[i] === 'free').length;
+      const who = c.st.filter(x => x.s[i] === 'ok').length;
       const hit = mode === 3 ? who === c.st.length : who >= 2;
       return `<div class="wk-c ${hit ? 'hit' : ''} ${i % 2 === 0 ? 'hour' : ''}">${c.st.map(x => `<i class="s-${x.s[i]}" style="--c:${x.m.color}"></i>`).join('')}</div>`;
     }).join('');
@@ -841,7 +841,7 @@ function viewFree() {
   <div class="tl-wrap">
     <div class="legend">${S.members.map(x => `<span><i style="--c:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>
     <div class="wk">${grid}</div>
-    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-free"></i>予定なし（集まれる）</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
+    <div class="tl-legend"><span><i class="s-ok"></i>集まれる（メンバー色）</span><span><i class="s-ng"></i>集まれない</span><span><i class="s-shift"></i>シフト</span><span><i class="s-busy"></i>個人の予定</span><span><i class="s-free"></i>未入力（集まれない）</span><span><i class="hit"></i>${mode === 3 ? '3人そろう' : '2人以上'}</span></div>
   </div>
   <button class="btn ghost sm" style="margin-top:10px" data-act="availEdit" data-date="${week[0]}">自分の空き時間を入力（この週）</button>
   <h3 class="sec">この週の共通の時間（1時間以上）</h3>
