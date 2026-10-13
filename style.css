@@ -895,3 +895,10 @@ html.lenis,html.lenis body{height:auto}
 .sp-name.alt,.artist{font-family:'Squada One','Noto Sans JP',sans-serif;font-style:normal;font-weight:400;-webkit-text-stroke:.07em currentColor;letter-spacing:.03em}
 .sp-name.alt{font-size:clamp(24px,7.4vw,36px)}
 .sp-white{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
+/* 起動：タップしてスタート */
+#splash.wait{cursor:pointer}
+.sp-tap{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;pointer-events:none}
+.sp-tap b{font-family:'Squada One','Noto Sans JP',sans-serif;font-weight:400;font-size:clamp(28px,9vw,44px);letter-spacing:.12em;color:#fff;
+  -webkit-text-stroke:.05em currentColor;text-shadow:0 0 10px #ff2d55,0 0 28px #ff2d55;animation:spTap 1.6s ease-in-out infinite}
+.sp-tap small{font-size:13px;color:rgba(255,255,255,.7);letter-spacing:.08em}
+@keyframes spTap{0%,100%{opacity:.45;transform:scale(.97)}50%{opacity:1;transform:scale(1.03)}}

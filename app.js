@@ -313,10 +313,88 @@ async function busy(btn, fn, label = '送信中…') {
   let finished = false;
   const finish = () => {
     if (finished) return; finished = true;
+    sfx(sfxOut);
     A(el, { opacity: 0, scale: 1.06 }, { duration: 0.45, ease: [0.4, 0, 0.2, 1] }).then(done);
   };
-  el.addEventListener('click', finish); // タップで飛ばせる
+  // ===== 効果音（音声ファイルは使わず、その場で合成） =====
+  let ac = null, master = null, nbuf = null;
+  // タップした瞬間に呼ぶ（iPhoneは操作の中でないと音の準備ができない）
+  const initAudio = () => { try {
+    ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume().catch(() => {});
+    master = ac.createGain(); master.gain.value = 0.85;
+    const comp = ac.createDynamicsCompressor(); master.connect(comp); comp.connect(ac.destination);
+    nbuf = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
+    const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { ac = null; } };
+  const T = (at = 0) => ac.currentTime + at;
+  /** 雑音を filter に通して鳴らす（周波数 f0→f1、音量 peak） */
+  const noise = (type, f0, f1, peak, attack, len, at = 0, q = 1) => {
+    const t0 = T(at), src = ac.createBufferSource(); src.buffer = nbuf;
+    const f = ac.createBiquadFilter(); f.type = type; f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(f1, t0 + len);
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + attack); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    src.connect(f); f.connect(g); g.connect(master); src.start(t0, Math.random()); src.stop(t0 + len + 0.05);
+  };
+  /** 音程のある音（波形 wave、f0→f1） */
+  const tone = (wave, f0, f1, peak, attack, len, at = 0, detune = 0) => {
+    const t0 = T(at), o = ac.createOscillator(), g = ac.createGain();
+    o.type = wave; o.detune.value = detune;
+    o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + len);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + attack); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + len + 0.05);
+  };
+  const sfx = fn => { try { if (ac && ac.state !== 'closed') fn(); } catch (e) {} };
+  // 起動：パワーアップ音＋名前が飛び込んでくるシュッ＋低いうなり
+  function sfxIntro() {
+    tone('sine', 50, 420, 0.5, 0.05, 0.5);
+    noise('bandpass', 3500, 250, 0.9, 0.02, 1.1, 0, 2.5);
+    tone('sine', 90, 40, 0.8, 0.01, 0.5);
+    [55, 82.5, 110].forEach((f, i) => tone('sawtooth', f, f, 0.05, 1.2, 4.4, 0.1, i * 7)); // 低く鳴り続けるうなり（パッド）
+    noise('lowpass', 200, 400, 0.12, 1.5, 4.2, 0.2);
+  }
+  // 彗星：ヒューンと光が走る音（2本）
+  function sfxComets() {
+    [0.35, 0.47].forEach((at, i) => { noise('bandpass', 500 + i * 300, 4200, 0.45, 1.6, 2.4, at, 6); tone('triangle', 900 + i * 200, 2400, 0.04, 1.5, 2.3, at); });
+  }
+  // 光がはじける：キラキラ
+  function sfxSparkle() {
+    for (let k = 0; k < 14; k++) tone('sine', 2400 + Math.random() * 3600, 1800 + Math.random() * 2400, 0.07, 0.005, 0.25 + Math.random() * 0.4, 2.55 + k * 0.035);
+    noise('highpass', 6000, 9000, 0.25, 0.01, 0.5, 2.55);
+  }
+  // 雷：バリッ（破裂）→ ドーン（爆発）→ ゴロゴロ（余韻）
+  function sfxThunder() {
+    noise('highpass', 2500, 800, 1.0, 0.003, 0.18);
+    noise('highpass', 1800, 600, 0.6, 0.003, 0.12, 0.09);
+    noise('highpass', 2200, 700, 0.5, 0.003, 0.1, 0.2);
+    noise('lowpass', 900, 120, 1.0, 0.01, 0.9);
+    noise('lowpass', 260, 60, 0.9, 0.12, 2.6, 0.1);
+    tone('sine', 70, 28, 0.9, 0.02, 1.1);
+  }
+  // 名前がアーティスト名に変わる：三色のきらめく和音（それぞれの色＝音）
+  function sfxNames() {
+    [[523.3, 0], [659.3, 0.05], [784, 0.1], [1046.5, 0.15]].forEach(([f, at]) => {
+      tone('triangle', f, f, 0.12, 0.01, 1.8, at); tone('sine', f * 2, f * 2, 0.04, 0.01, 1.2, at, 8);
+    });
+  }
+  // 閉じる：スッと抜ける音
+  function sfxOut() { noise('bandpass', 300, 5000, 0.4, 0.3, 0.5, 0, 3); }
+  // 「タップしてスタート」：タップしてから音とアニメーションを始める（iPhoneは触る前に音を出せないため）
+  el.classList.add('wait');
+  const tap = document.createElement('div'); tap.className = 'sp-tap';
+  tap.innerHTML = '<b>TAP TO START</b><small>タップでスタート 🔊</small>';
+  el.appendChild(tap);
+  el.addEventListener('click', function first() {
+    el.removeEventListener('click', first);
+    A(tap, { opacity: [1, 0], scale: [1, 1.4] }, { duration: 0.35 }).then(() => tap.remove());
+    el.classList.remove('wait');
+    start();
+    setTimeout(() => el.addEventListener('click', finish), 600); // 始まってからのタップは飛ばす
+  });
+  function start() {
+    initAudio();
   const comets = $$('.sp-comet', el), trails = $$('.sp-trail', el);
+  sfx(sfxIntro); sfx(sfxComets); sfx(sfxSparkle);
   const logo = $('.sp-logo', el), flash = $('.sp-flash', el), stage = $('.sp-stage', el);
   // 彗星：短い光の線がパスの上を走る（strokeDasharray で長さ seg の線だけ見せる）
   comets.forEach((p, i) => {
@@ -354,7 +432,7 @@ async function busy(btn, fn, label = '送信中…') {
   // Motion の時計で合わせる（setTimeout だとロゴの色付きとずれることがあるため）
   A(0, 1, { duration: 0.01, delay: 2.7 }).then(() => {
     if (finished) return;
-    bolts();
+    bolts(); sfx(sfxNames);
     names.forEach(n => {
       const c = getComputedStyle(n).getPropertyValue('--c').trim();
       n.textContent = n.dataset.alt; n.classList.add('alt');
@@ -365,40 +443,9 @@ async function busy(btn, fn, label = '送信中…') {
       }, { duration: 1.4, ease: [0.2, 0.7, 0.2, 1] });
     });
   });
-  // 雷の効果音（音声ファイルは使わず、その場で合成）。ブラウザは操作なしの再生を止めることがあるので、
-  // 画面に触れたら鳴らせるように待っておく
-  let ac = null;
-  try { ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume().catch(() => {}); } catch (e) { ac = null; }
-  const unlock = () => { if (ac && ac.state !== 'running') ac.resume().catch(() => {}); };
-  ['pointerdown', 'touchstart', 'keydown'].forEach(t => window.addEventListener(t, unlock, { once: true, passive: true }));
-  function thunder() {
-    if (!ac || ac.state !== 'running') return;
-    const t0 = ac.currentTime, sr = ac.sampleRate;
-    const buf = ac.createBuffer(1, sr * 3, sr), d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const master = ac.createGain(); master.gain.value = 0.9;
-    const comp = ac.createDynamicsCompressor(); master.connect(comp); comp.connect(ac.destination);
-    const noise = (filterType, f0, f1, peak, attack, len, start = 0) => {
-      const src = ac.createBufferSource(); src.buffer = buf;
-      const f = ac.createBiquadFilter(); f.type = filterType;
-      f.frequency.setValueAtTime(f0, t0 + start); f.frequency.exponentialRampToValueAtTime(f1, t0 + start + len);
-      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0 + start);
-      g.gain.exponentialRampToValueAtTime(peak, t0 + start + attack); g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + len);
-      src.connect(f); f.connect(g); g.connect(master); src.start(t0 + start, Math.random()); src.stop(t0 + start + len + 0.05);
-    };
-    // バリッ（鋭い破裂音）→ ドーン（低い爆発）→ ゴロゴロ（長い余韻）
-    noise('highpass', 2500, 800, 1.0, 0.003, 0.18);
-    noise('highpass', 1800, 600, 0.6, 0.003, 0.12, 0.09);
-    noise('lowpass', 900, 120, 1.0, 0.01, 0.9);
-    noise('lowpass', 260, 60, 0.9, 0.12, 2.6, 0.1);
-    const o = ac.createOscillator(), og = ac.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(70, t0); o.frequency.exponentialRampToValueAtTime(28, t0 + 0.8);
-    og.gain.setValueAtTime(0.0001, t0); og.gain.exponentialRampToValueAtTime(0.9, t0 + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
-    o.connect(og); og.connect(master); o.start(t0); o.stop(t0 + 1.2);
-  }
   // 三色の稲妻：画面を上から下へギザギザに走る
   function bolts() {
-    try { thunder(); } catch (e) {}
+    sfx(sfxThunder);
     const svg = $('.sp-bolts', el); if (!svg) return;
     const W = el.clientWidth, H = el.clientHeight, ns = 'http://www.w3.org/2000/svg';
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -442,6 +489,7 @@ async function busy(btn, fn, label = '送信中…') {
   // 余韻が終わったら音の準備を片付ける（他のアプリの音楽をじゃましないように）
   setTimeout(() => { try { if (ac) ac.close(); } catch (e) {} }, 7500);
   setTimeout(finish, 7000); // 念のため（アニメーションが止まっても必ず閉じる）
+  }
 })();
 window.addEventListener('mg:splashdone', () => { if (S.me && !$('#app').hidden) { S.fxKey = ''; render(); } else FX.login(); });
 
