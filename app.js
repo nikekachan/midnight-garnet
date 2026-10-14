@@ -742,8 +742,11 @@ function meetupPanel() {
 }
 
 // ---------- 全員休みの日（希望休の周知） ----------
-const offOn = date => S.offdays.find(o => o.date === date) || null;
+// シフトが固定の人（みつ）には、全員休みの日の表示を出さない
+const noOff = () => !!S.me && (S.fixedShifts || []).some(f => f.member === S.me.id);
+const offOn = date => noOff() ? null : S.offdays.find(o => o.date === date) || null;
 function offBanner() {
+  if (noOff()) return '';
   const list = S.offdays.filter(o => o.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
   const now = parseYmd(today());
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -816,7 +819,7 @@ function viewMonth() {
     <h3>${md(S.day)}</h3>
     <div class="day-btns">
       <button class="btn gem sm" data-act="form" data-form="event" data-date="${S.day}">＋ 予定</button>
-      ${offOn(S.day) ? `<button class="btn ghost sm" data-act="offOpen" data-id="${esc(offOn(S.day).id)}">🚩 全員休みの日</button>` : `<button class="btn ghost sm" data-act="form" data-form="offday" data-date="${S.day}">🚩 全員休みにする</button>`}
+      ${noOff() ? '' : offOn(S.day) ? `<button class="btn ghost sm" data-act="offOpen" data-id="${esc(offOn(S.day).id)}">🚩 全員休みの日</button>` : `<button class="btn ghost sm" data-act="form" data-form="offday" data-date="${S.day}">🚩 全員休みにする</button>`}
       <button class="btn ghost sm" data-act="availEdit" data-date="${S.day}">空き時間を入力（週）</button>
     </div>
   </div>
