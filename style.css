@@ -928,3 +928,30 @@ html.lenis,html.lenis body{height:auto}
 .gb-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;border-left:3px solid var(--c);padding-left:8px}
 .gb-row p{margin:0;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
 .gb-row .btn{width:auto;margin:0;padding:4px 10px}
+/* 企画（ネタ・道具の予算） */
+.segtabs .hd-badge{position:static;margin-left:4px;display:inline-grid;vertical-align:1px}
+.pp{border:1px solid color-mix(in oklab,var(--c) 35%,var(--line));border-left:4px solid var(--c);border-radius:14px;background:var(--surface);padding:12px;display:grid;gap:8px}
+.pp-title{font-size:16px;line-height:1.4}
+.pp-st{font-size:11px;font-weight:700;border-radius:99px;padding:2px 8px;border:1px solid var(--line);color:var(--muted)}
+.pp-st.ok{color:var(--ok);border-color:var(--ok)} .pp-st.ng{color:#ff6b6b;border-color:#ff6b6b}
+.pp-chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pp-chip{border:1px solid var(--line);border-radius:10px;padding:6px 8px;display:grid;gap:2px;background:var(--surface2)}
+.pp-chip small{font-size:11px;color:var(--muted)} .pp-chip b{font-size:14px;font-weight:600;word-break:break-word}
+.pp-chip.tbd b{color:var(--muted);font-weight:400}
+.pp-price b{font-size:20px}
+.pp-split{display:grid;gap:4px}
+.pp-split>div{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;border-left:3px solid var(--c);padding-left:8px}
+.pp-split small{color:var(--muted);font-size:12px}
+.pp-warn{margin:2px 0 0;font-size:12px;color:#ffb052}
+.pp-urls{display:grid;gap:2px} .pp-urls a{font-size:12px;color:var(--muted);word-break:break-all}
+.pp-note{margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap}
+.pp-votes{display:flex;gap:6px;flex-wrap:wrap}
+.pp-v{font-size:12px;border:1px dashed var(--line);border-radius:99px;padding:2px 9px;color:var(--muted)}
+.pp-v.ok{border-style:solid;border-color:var(--c);color:var(--text);background:color-mix(in oklab,var(--c) 15%,transparent)}
+.pp-v.ng{border-style:solid;border-color:#ff6b6b;color:#ff6b6b}
+.pp-btns{display:flex;gap:8px} .pp-btns .btn{width:auto;flex:1;margin:0}
+.pp-h{margin:16px 2px 8px;font-size:14px} .pp-h small{color:var(--muted);font-weight:400}
+.pp-rej{margin-top:16px} .pp-rej summary{cursor:pointer;font-weight:700;padding:6px 2px} .pp-rej .pp{opacity:.75}
+.pp-split-in{display:grid;gap:6px;margin:0 0 12px}
+.pp-split-in label{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;margin:0}
+.pp-split-in input{margin:0}

@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoComments: [], goals: [], dojoWho: '', dojoKind: '',
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoComments: [], goals: [], proposals: [], proposalComments: [], boardMode: 'memo', dojoWho: '', dojoKind: '',
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -515,7 +515,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo', 'dojoComments', 'goals'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo', 'dojoComments', 'goals', 'proposals', 'proposalComments'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -619,7 +619,7 @@ function render() {
 }
 function renderHeader() {
   if (!S.me) return;
-  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${unreadMemos().length ? `<b class="hd-badge">${unreadMemos().length}</b>` : ''}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="hd-btn ${S.view === 'dojo' ? 'on' : ''}" data-act="nav" data-view="dojo" aria-label="サニくる道場">🥋<span>道場</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
+  $('#meChip').innerHTML = `<button class="hd-btn ${S.view === 'board' ? 'on' : ''}" data-act="nav" data-view="board" aria-label="掲示板・メモ">📋<span>掲示板</span>${(n => n ? `<b class="hd-badge">${n}</b>` : '')(unreadMemos().length + propWaiting('neta').length + propWaiting('gear').length)}</button><button class="hd-btn ${S.view === 'mandala' ? 'on' : ''}" data-act="nav" data-view="mandala" aria-label="目標マンダラ">🎯<span>目標</span></button><button class="hd-btn ${S.view === 'dojo' ? 'on' : ''}" data-act="nav" data-view="dojo" aria-label="サニくる道場">🥋<span>道場</span></button><button class="me" data-act="nav" data-view="settings"><i style="--c:${mem(S.me.id).color}"></i>${esc(S.me.name)}${isAdminMode() ? '<b class="adm">ADMIN</b>' : ''}</button>`;
 }
 function afterViewRender() {
   // 画面が変わったときだけ入場アニメーション（同じ画面の更新では動かさない）
@@ -1787,7 +1787,7 @@ const FORMS = {
     </form>`;
   },
   confirmDel(_, o = {}) {
-    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信', dojo: '道場のメモ', dojoComment: 'コメント' }[o.type] || '';
+    const what = { task: 'タスク', project: '曲・アルバム（中のタスクもすべて）', event: '予定', shift: 'シフト', idea: '要望', memo: 'メモ', release: '作品', offday: '全員休みの日', reply: '返信', dojo: '道場のメモ', dojoComment: 'コメント', proposal: '企画', proposalComment: '意見' }[o.type] || '';
     return `${sheetHead('削除しますか？')}
       <p class="hint" style="margin:0 0 14px">「${esc(o.label || '')}」の${what}を削除します。元に戻せません。</p>
       <button class="btn danger" data-act="delYes" data-type="${esc(o.type)}" data-id="${esc(o.id)}">削除する</button>`;
@@ -1843,6 +1843,28 @@ const FORMS = {
       <label>タイトル（作品名・アーティストなど）<input name="title" maxlength="120" value="${esc(x ? x.title : '')}" placeholder="例：〇〇 / MV「△△」"></label>
       <label>✨ いいところ・取り入れたいところ・学び<textarea name="good" rows="7" maxlength="5000" placeholder="例：サビ前で一瞬無音にする構成がいい。音数を減らすとサビの広がりが際立つので、次の曲で試したい">${esc(x ? [x.good, x.learn].filter(Boolean).join('\n\n') : '')}</textarea></label>
       <button class="btn gem" type="submit">${x ? '保存する' : 'メモする'}</button>
+    </form>`;
+  },
+  proposal(_, o = {}) {
+    const x = o.id ? S.proposals.find(p => p.id === o.id) : null, kind = x ? x.kind : o.kind === 'gear' ? 'gear' : 'neta', d = x ? propData(x) : {};
+    if (kind === 'neta') return `<form data-form="proposal" data-kind="neta" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? 'ネタを編集' : '🎬 ネタを投稿')}
+      <p class="hint" style="margin:-6px 0 10px">空欄の項目は「未定」と表示されます。${x ? '編集すると、承認はやり直しになります。' : ''}</p>
+      <label>どんな動画？（企画の名前）<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}" placeholder="例：サビだけ3人で歌い回すショート"></label>
+      <label>参考動画のURL（1行に1つ）<textarea name="url" rows="2" inputmode="url" placeholder="https://www.tiktok.com/…">${esc(x ? x.url : '')}</textarea></label>
+      ${NETA_F.map(([f, l]) => `<label>${l}<input name="${f}" maxlength="200" value="${esc(d[f] || '')}" placeholder="未定"></label>`).join('')}
+      <label>くわしく<textarea name="note" rows="4" maxlength="3000" placeholder="やりたいこと・見どころなど">${esc(x ? x.note : '')}</textarea></label>
+      <button class="btn gem" type="submit">${x ? '保存する' : '投稿する'}</button>
+    </form>`;
+    const split = d.split || {}, mode = d.mode === 'yen' ? 'yen' : 'pct';
+    return `<form data-form="proposal" data-kind="gear" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? '道具の提案を編集' : '🛠 道具を提案')}
+      <p class="hint" style="margin:-6px 0 10px">ほかの2人が承認したら通ります。1人でも却下すると却下リストに入ります。${x ? '編集すると、承認はやり直しになります。' : ''}</p>
+      <label>道具の名前<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}" placeholder="例：コンデンサーマイク"></label>
+      <label>商品のURL（1行に1つ）<textarea name="url" rows="2" inputmode="url" placeholder="https://www.amazon.co.jp/…">${esc(x ? x.url : '')}</textarea></label>
+      <label>金額（円）<input name="price" type="number" min="0" inputmode="numeric" value="${esc(d.price || '')}" placeholder="例：25000"></label>
+      <div class="seg kind-seg"><label class="seg-i"><input type="radio" name="mode" value="pct" ${mode === 'pct' ? 'checked' : ''}><span>％で分ける</span></label><label class="seg-i"><input type="radio" name="mode" value="yen" ${mode === 'yen' ? 'checked' : ''}><span>金額で分ける</span></label></div>
+      <div class="pp-split-in">${S.members.map(m => `<label style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><input name="sp_${m.id}" type="number" min="0" step="any" inputmode="decimal" value="${esc(split[m.id] || '')}" placeholder="0"></label>`).join('')}</div>
+      <label>理由・メモ<textarea name="note" rows="3" maxlength="3000" placeholder="なぜ必要か、いつまでに欲しいか など">${esc(x ? x.note : '')}</textarea></label>
+      <button class="btn gem" type="submit">${x ? '保存する' : '提案する'}</button>
     </form>`;
   },
   links() {
@@ -2103,6 +2125,19 @@ async function handleForm(kind, f, btn) {
       openSheet(FORMS.links()); render(); toast('SNSを追加しました 🔗');
       return;
     }
+    if (kind === 'proposal') {
+      const pk = f.dataset.kind, data = {};
+      if (pk === 'neta') NETA_F.forEach(([k]) => { data[k] = v(k); });
+      else { data.price = v('price'); data.mode = (f.querySelector('[name=mode]:checked') || {}).value || 'pct'; data.split = {}; S.members.forEach(m => { data.split[m.id] = v('sp_' + m.id); }); }
+      applyBoot(await api('saveProposal', { id: f.dataset.id || '', kind: pk, title: v('title'), url: v('url'), note: v('note'), data }));
+      closeSheet(); S.view = 'board'; S.boardMode = pk; refreshAll(); toast(f.dataset.id ? '保存しました' : pk === 'neta' ? 'ネタを投稿しました 🎬' : '道具を提案しました 🛠');
+      return;
+    }
+    if (kind === 'propComment') {
+      applyBoot(await api('commentProposal', { propId: f.dataset.prop, text: v('text') }));
+      refreshAll(); toast('意見を送りました 💬');
+      return;
+    }
     if (kind === 'dojoComment') {
       applyBoot(await api('commentDojo', { dojoId: f.dataset.dojo, text: v('text') }));
       refreshAll(); toast('コメントしました 💬');
@@ -2265,7 +2300,7 @@ async function compressImage(file) {
 // ---------- 削除 ----------
 async function doDelete(btn) {
   const { type, id } = btn.dataset;
-  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply', dojo: 'deleteDojo', dojoComment: 'deleteDojoComment' }[type];
+  const action = { task: 'adminDeleteTask', project: 'adminDeleteProject', event: 'deleteEvent', shift: 'adminDeleteShift', idea: 'adminDeleteIdea', memo: 'deleteMemo', release: 'deleteRelease', offday: 'deleteOffday', reply: 'deleteReply', dojo: 'deleteDojo', dojoComment: 'deleteDojoComment', proposal: 'deleteProposal', proposalComment: 'deleteProposalComment' }[type];
   await busy(btn, async () => {
     applyBoot(await api(action, { id }));
     closeSheet();
@@ -2777,11 +2812,16 @@ function reactAnim(btn, rect, emoji, adding) {
       { duration: 0.55 + Math.random() * 0.3, ease: 'easeOut' }).then(() => s.remove());
   }
 }
+const boardTabs = () => `<div class="segtabs three">${[['memo', '📋 掲示板'], ['neta', '🎬 ネタ'], ['gear', '🛠 道具の予算']].map(([k, l]) => {
+  const n = k === 'memo' ? 0 : propWaiting(k).length;
+  return `<button class="${S.boardMode === k ? 'on' : ''}" data-act="boardMode" data-m="${k}">${l}${n ? `<b class="hd-badge">${n}</b>` : ''}</button>`;
+}).join('')}</div>`;
 function viewBoard() {
+  if (S.boardMode === 'neta' || S.boardMode === 'gear') return boardTabs() + viewProposals(S.boardMode);
   const unread = unreadMemos().map(x => x.id);
   setTimeout(watchMemoReads, 50);
   const list = S.memos.slice().sort((a, b) => memoActivity(b).localeCompare(memoActivity(a)));
-  return `<h2 class="page-title">掲示板・メモ</h2>
+  return `${boardTabs()}<h2 class="page-title">掲示板・メモ</h2>
   <p class="muted small" style="margin:-4px 2px 12px">フォーマットや共有したいことを貼っておく場所です。全員が見られて、「コピー」ボタンで中身をコピーできます。編集・削除は書いた本人だけです。</p>
   <button class="btn gem" data-act="form" data-form="memo">＋ 新しいメモ</button>
   <div class="memos">${list.length ? list.map(x => {
@@ -2818,6 +2858,80 @@ function viewBoard() {
       </div>
     </div>`;
   }).join('') : '<p class="empty-msg">まだメモはありません</p>'}</div>`;
+}
+
+// ---------- 企画（動画のネタ・道具の予算）：ほかの2人が承認したら通る ----------
+const propData = x => { try { return JSON.parse(x.data || '{}'); } catch (e) { return {}; } };
+/** 自分の承認待ち（自分が書いたものでなく、まだ投票していない検討中の企画） */
+const propWaiting = kind => S.me ? S.proposals.filter(x => x.kind === kind && x.status === 'open' && x.author !== S.me.id && !splitIds(x.approvals).includes(S.me.id)) : [];
+const NETA_F = [['mono', '🎒 モノ'], ['basho', '📍 場所'], ['hito', '👥 ひと'], ['jikan', '⏰ 時間']];
+const yen = n => Math.round(n).toLocaleString('ja-JP') + '円';
+function propVotes(x) {
+  const ok = splitIds(x.approvals), ng = splitIds(x.rejects), voters = S.members.filter(m => m.id !== x.author);
+  return `<div class="pp-votes">${voters.map(m => `<span class="pp-v ${ng.includes(m.id) ? 'ng' : ok.includes(m.id) ? 'ok' : ''}" style="--c:${m.color}">${ng.includes(m.id) ? '✕' : ok.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>`;
+}
+function propCard(x) {
+  const a = mem(x.author), d = propData(x), mine = x.author === S.me.id, canEdit = mine || isAdminMode();
+  const ok = splitIds(x.approvals).includes(S.me.id), st = { open: ['検討中', ''], approved: [x.kind === 'neta' ? '企画通過 🎉' : '購入OK 🎉', 'ok'], rejected: ['却下', 'ng'] }[x.status] || ['検討中', ''];
+  const urls = String(x.url || '').split('\n').filter(Boolean);
+  let body = '';
+  if (x.kind === 'neta') {
+    const site = dojoSite(urls[0]);
+    body = `${urls[0] && site.thumb ? `<a class="dj-link" href="${esc(urls[0])}" target="_blank" rel="noopener"><img class="dj-thumb" src="${site.thumb}" alt="" loading="lazy"></a>` : ''}
+      <div class="pp-chips">${NETA_F.map(([f, l]) => `<div class="pp-chip ${d[f] ? '' : 'tbd'}"><small>${l}</small><b>${d[f] ? esc(d[f]) : '未定'}</b></div>`).join('')}</div>`;
+  } else {
+    const split = d.split || {}, ids = Object.keys(split), sum = ids.reduce((t, id) => t + Number(split[id] || 0), 0);
+    body = `<div class="pp-price">${d.price ? `<b>${yen(d.price)}</b>` : '<span class="muted">金額未定</span>'}</div>
+      ${ids.length ? `<div class="pp-split">${ids.map(id => { const m = mem(id), v = Number(split[id]);
+        return `<div style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><b>${d.mode === 'yen' ? yen(v) : `${v}%`}</b>${d.mode !== 'yen' && d.price ? `<small>${yen(d.price * v / 100)}</small>` : ''}</div>`; }).join('')}
+        ${d.mode !== 'yen' && Math.abs(sum - 100) > 0.01 ? `<p class="pp-warn">合計が${sum}%です（100%になっていません）</p>` : ''}${d.mode === 'yen' && d.price && sum !== d.price ? `<p class="pp-warn">合計${yen(sum)}／金額${yen(d.price)}</p>` : ''}</div>` : '<p class="muted small">負担の割り振りは未定</p>'}`;
+  }
+  const cs = S.proposalComments.filter(c => c.propId === x.id).sort((p, q) => String(p.createdAt).localeCompare(String(q.createdAt)));
+  return `<article class="pp" style="--c:${a.color}">
+    <div class="dj-top"><span class="pp-st ${st[1]}">${st[0]}</span><span class="who" style="--c:${a.color}">${esc(a.name)}</span><span class="muted small">${timeLabel(x.createdAt)}</span></div>
+    <b class="pp-title">${esc(x.title)}</b>
+    ${body}
+    ${urls.length ? `<div class="pp-urls">${urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">🔗 ${esc(u.replace(/^https:\/\//, '').slice(0, 60))}</a>`).join('')}</div>` : ''}
+    ${x.note ? `<p class="pp-note">${linkify(x.note)}</p>` : ''}
+    ${propVotes(x)}
+    ${x.status === 'open' && !mine ? `<div class="pp-btns">${ok ? `<button class="btn ghost sm" data-act="propVote" data-id="${esc(x.id)}" data-v="">承認を取り消す</button>` : `<button class="btn gem sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ok">👍 承認する</button>`}${x.kind === 'gear' ? `<button class="btn danger sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ng">却下する</button>` : ''}</div>` : ''}
+    ${canEdit ? `<div class="memo-btns" style="margin-top:8px">${x.status === 'open' ? `<button class="btn ghost sm" data-act="form" data-form="proposal" data-kind="${x.kind}" data-id="${esc(x.id)}">✎ 編集</button>` : ''}<button class="btn danger sm" data-act="confirmDel" data-type="proposal" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button></div>` : ''}
+    <div class="replies chat">
+      ${cs.length ? `<div class="r-head">💬 意見 ${cs.length}件</div>` : ''}
+      ${cs.map(c => { const me2 = c.author === S.me.id; return `<div class="m ${me2 ? 'mine' : ''}" style="--c:${mem(c.author).color}">
+        ${me2 ? '' : `<div class="m-name" style="color:${mem(c.author).color}">${esc(mem(c.author).name)}</div>`}
+        <div class="bubble">${linkify(c.text)}</div>
+        <time>${timeLabel(c.createdAt)}${me2 || isAdminMode() ? ` · <button class="reply-del" data-act="confirmDel" data-type="proposalComment" data-id="${esc(c.id)}" data-label="意見">削除</button>` : ''}</time>
+      </div>`; }).join('')}
+      <form data-form="propComment" data-prop="${esc(x.id)}" class="reply-form composer-lite">
+        <textarea name="text" rows="1" maxlength="3000" required placeholder="意見を書く…"></textarea>
+        <button class="send" type="submit" aria-label="送信"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      </form>
+    </div>
+  </article>`;
+}
+async function propVote(el) {
+  const vv = el.dataset.v;
+  if (vv === 'ng' && !confirm('却下しますか？却下リストに入り、もう承認できなくなります。')) return;
+  el.disabled = true;
+  try {
+    applyBoot(await api('voteProposal', { id: el.dataset.id, vote: vv })); refreshAll();
+    const x = S.proposals.find(p => p.id === el.dataset.id);
+    if (x && x.status === 'approved') { toast('通りました 🎉'); FX.confetti(); }
+    else toast(vv === 'ok' ? '承認しました 👍' : vv === 'ng' ? '却下しました' : '取り消しました');
+  } catch (e) { toast(e.message, 'err'); el.disabled = false; }
+}
+function viewProposals(kind) {
+  const all = S.proposals.filter(x => x.kind === kind).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const open = all.filter(x => x.status === 'open'), ok = all.filter(x => x.status === 'approved'), ng = all.filter(x => x.status === 'rejected');
+  const neta = kind === 'neta';
+  return `<h2 class="page-title">${neta ? '🎬 ネタ投稿' : '🛠 道具の予算'}</h2>
+  <p class="muted small" style="margin:-4px 2px 12px">${neta ? 'やりたい動画のネタを出す場所です。ほかの2人が承認したら企画が通ります。意見はチャットでどうぞ。' : '必要な道具と、誰がどれだけ払うかを決める場所です。ほかの2人が承認したら通り、1人でも却下すると却下リストに入ります。'}</p>
+  <button class="btn gem" data-act="form" data-form="proposal" data-kind="${kind}">＋ ${neta ? 'ネタを投稿する' : '道具を提案する'}</button>
+  <h3 class="pp-h">検討中 <small>${open.length}</small></h3>
+  <div class="dojo-list">${open.length ? open.map(propCard).join('') : '<p class="empty-msg">検討中のものはありません</p>'}</div>
+  ${ok.length ? `<h3 class="pp-h">${neta ? '✅ 通った企画' : '✅ 購入OK'} <small>${ok.length}</small></h3><div class="dojo-list">${ok.map(propCard).join('')}</div>` : ''}
+  ${ng.length ? `<details class="pp-rej"><summary>🙅 却下リスト <small>${ng.length}</small></summary><div class="dojo-list">${ng.map(propCard).join('')}</div></details>` : ''}`;
 }
 
 // ---------- 意見箱 ----------
@@ -3097,6 +3211,8 @@ document.addEventListener('click', e => {
     }
     case 'copyLyrics': copyText(el.dataset.text, '歌詞をコピーしました'); break;
     case 'calMode': S.calMode = el.dataset.m; render(); break;
+    case 'boardMode': S.boardMode = el.dataset.m; render(); break;
+    case 'propVote': propVote(el); break;
     case 'freeMode': S.freeMode = Number(el.dataset.m); render(); break;
     case 'dayShift': S.day = addDays(S.day, Number(el.dataset.d)); S.month = S.day.slice(0, 7); render(); break;
     case 'availEdit': S.weekEdit = null; openSheet(FORMS.availWeek(null, { date: el.dataset.date })); break;
@@ -3336,7 +3452,7 @@ const Mock = (() => {
   ];
   const jackets = {};
   const offdays = [];
-  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [], dojo = [], dojoComments = [];
+  const memoReplies = [], memoMarks = [], links = [], eventIdeas = [], dojo = [], dojoComments = [], proposals = [], proposalComments = [];
   const memos = [
     { id: 'mm1', author: 'kenbo', title: '作曲シートのフォーマット', body: '仮タイトル：\nテイスト：\nBPM：\nデモURL：\n\n00:00 イントロ\n00:15 Aメロ\n00:45 サビ', createdAt: now(), updatedAt: now() },
   ];
@@ -3360,7 +3476,7 @@ const Mock = (() => {
     msgs.forEach(x => { if (x.type === 'chat') { chat[x.taskId] = chat[x.taskId] || { n: 0 }; chat[x.taskId].n++; } });
     const cp = a => a.map(x => Object.assign({}, x));
     return { ok: true, me: Object.assign({}, m), members: cp(MEMBERS), tasks: cp(tasks), projects: cp(projects), chat,
-      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas), dojo: cp(dojo), dojoComments: cp(dojoComments) };
+      events: cp(events), avail: cp(avail), shifts: cp(shifts), shiftImages: shiftImages.map(x => ({ id: x.id, memberId: x.memberId, month: x.month, mime: x.mime, createdAt: x.createdAt })), ideas: cp(ideas), memos: cp(memos), releases: cp(releases), offdays: cp(offdays), memoReplies: cp(memoReplies), memoMarks: cp(memoMarks), links: cp(links), eventIdeas: cp(eventIdeas), dojo: cp(dojo), dojoComments: cp(dojoComments), proposals: cp(proposals), proposalComments: cp(proposalComments) };
   };
 
   const H = {
@@ -3499,6 +3615,11 @@ const Mock = (() => {
     addEventIdea(r, m) { eventIdeas.push({ id: 'ei' + (++seq), eventId: r.eventId, author: m.id, text: r.text, createdAt: now() }); return boot(m); },
     deleteEventIdea(r, m) { const i = eventIdeas.findIndex(x => x.id === r.id); if (i >= 0) eventIdeas.splice(i, 1); return boot(m); },
     saveDojo(r, m) { const o = { kind: r.kind, url: r.url, title: r.title, good: r.good, learn: r.learn, updatedAt: now() }; if (r.id) Object.assign(dojo.find(d => d.id === r.id), o); else dojo.push(Object.assign({ id: 'dj' + (++seq), author: m.id, createdAt: now() }, o)); return boot(m); },
+    saveProposal(r, m) { const o = { title: r.title, url: r.url || '', note: r.note || '', data: JSON.stringify(r.data || {}), approvals: '', rejects: '', status: 'open', updatedAt: now() }; if (r.id) Object.assign(proposals.find(p => p.id === r.id), o); else proposals.push(Object.assign({ id: 'pp' + (++seq), kind: r.kind, author: m.id, createdAt: now() }, o)); return boot(m); },
+    voteProposal(r, m) { const x = proposals.find(p => p.id === r.id); const ok = x.approvals.split(',').filter(id => id && id !== m.id), ng = x.rejects.split(',').filter(id => id && id !== m.id); if (r.vote === 'ok') ok.push(m.id); if (r.vote === 'ng') ng.push(m.id); x.approvals = ok.join(','); x.rejects = ng.join(','); x.status = ng.length ? 'rejected' : MEMBERS.filter(y => y.id !== x.author).every(y => ok.includes(y.id)) ? 'approved' : 'open'; return boot(m); },
+    deleteProposal(r, m) { const i = proposals.findIndex(p => p.id === r.id); if (i >= 0) proposals.splice(i, 1); return boot(m); },
+    commentProposal(r, m) { proposalComments.push({ id: 'pc' + (++seq), propId: r.propId, author: m.id, text: String(r.text || ''), createdAt: now() }); return boot(m); },
+    deleteProposalComment(r, m) { const i = proposalComments.findIndex(x => x.id === r.id); if (i >= 0) proposalComments.splice(i, 1); return boot(m); },
     commentDojo(r, m) { dojoComments.push({ id: 'dc' + (++seq), dojoId: r.dojoId, author: m.id, text: String(r.text || ''), createdAt: now() }); return boot(m); },
     deleteDojoComment(r, m) { const i = dojoComments.findIndex(x => x.id === r.id); if (i >= 0) dojoComments.splice(i, 1); return boot(m); },
     deleteDojo(r, m) { const i = dojo.findIndex(d => d.id === r.id); if (i >= 0) dojo.splice(i, 1); return boot(m); },
