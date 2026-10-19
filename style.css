@@ -922,3 +922,9 @@ html.lenis,html.lenis body{height:auto}
 .md-prep{border-top:1px dashed var(--line);padding:6px 8px 2px;display:grid;gap:2px}
 .md-prep small{font-size:11px;color:var(--mc)} .md-prep span{font-size:13px;line-height:1.45}
 .md-prep .md-st{border-top:0;padding-left:0}
+/* 各自の最終目標（カレンダーの一番上） */
+.goals-bar{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:10px 12px;margin:0 0 12px;display:grid;gap:6px}
+.gb-head{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.gb-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;border-left:3px solid var(--c);padding-left:8px}
+.gb-row p{margin:0;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.gb-row .btn{width:auto;margin:0;padding:4px 10px}

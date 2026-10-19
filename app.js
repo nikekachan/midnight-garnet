@@ -41,7 +41,7 @@ const S = {
   me: null, members: [], tasks: [], projects: [], chat: {},
   view: 'calendar', filter: 'mine',
   month: today().slice(0, 7), day: today(),
-  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoComments: [], dojoWho: '', dojoKind: '',
+  events: [], avail: [], shifts: [], shiftImages: [], ideas: [], memos: [], releases: [], fixedShifts: [], offdays: [], memoReplies: [], memoMarks: [], links: [], eventIdeas: [], pchat: {}, dojo: [], dojoComments: [], goals: [], dojoWho: '', dojoKind: '',
   worksMode: 'making', minMonth: today().slice(0, 7), jackets: {}, jacketDraft: null,
   syncPid: null, syncRows: null, syncCur: 0, syncSaved: {}, syncFile: '',
   mandala: {}, mandalaLoaded: false, mdSel: 4, mdItem: null,
@@ -515,7 +515,7 @@ function applyBoot(r) {
   if (r.tasks) S.tasks = r.tasks;
   if (r.projects) S.projects = r.projects;
   if (r.chat) S.chat = r.chat;
-  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo', 'dojoComments'].forEach(k => { if (r[k]) S[k] = r[k]; });
+  ['events', 'avail', 'shifts', 'shiftImages', 'ideas', 'memos', 'releases', 'fixedShifts', 'offdays', 'memoReplies', 'memoMarks', 'links', 'eventIdeas', 'dojo', 'dojoComments', 'goals'].forEach(k => { if (r[k]) S[k] = r[k]; });
 }
 async function load() {
   applyBoot(await api('bootstrap'));
@@ -697,8 +697,17 @@ const weekDays = date => { const s0 = weekStart(date); return [0, 1, 2, 3, 4, 5,
 const mdShort = ds => { const d = parseYmd(ds); return `${d.getMonth() + 1}/${d.getDate()}`; };
 const isMyEvent = e => splitIds(e.participants).includes(S.me.id) || e.createdBy === S.me.id;
 
+/** 各自の最終目標（カレンダーの一番上にいつも出す） */
+function goalsBar() {
+  return `<div class="goals-bar"><div class="gb-head">🎯 それぞれの最終目標</div>${S.members.map((m, k) => {
+    const g = S.goals.find(x => x.k === k) || {}, mine = m.id === S.me.id;
+    return `<div class="gb-row" style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span>
+      <p>${g.text ? esc(g.text) : '<span class="muted">まだ書いていません</span>'}</p>
+      ${mine ? `<button class="btn ghost sm" data-act="form" data-form="goal">✎</button>` : ''}</div>`;
+  }).join('')}</div>`;
+}
 function viewCalendar() {
-  return `
+  return `${goalsBar()}
   <div class="segtabs three">${[['month', 'カレンダー'], ['free', '空き時間・共通'], ['minutes', '議事録']].map(([k, l]) =>
     `<button class="${S.calMode === k ? 'on' : ''}" data-act="calMode" data-m="${k}">${l}</button>`).join('')}</div>
   ${S.calMode === 'month' ? '' : offBanner()}
@@ -1849,6 +1858,14 @@ const FORMS = {
         <button class="btn gem" type="submit">追加する</button>
       </form>`;
   },
+  goal() {
+    const k = S.members.findIndex(m => m.id === S.me.id), g = S.goals.find(x => x.k === k) || {};
+    return `<form data-form="goal">${sheetHead('🎯 自分の最終目標')}
+      <p class="hint" style="margin:-6px 0 12px">カレンダーの一番上に、3人ぶんいつも表示されます。</p>
+      <label>最終目標<textarea name="text" rows="3" maxlength="300" placeholder="例：1年以内にフォロワー1万人の作曲家になる">${esc(g.text || '')}</textarea></label>
+      <button class="btn gem" type="submit">保存する</button>
+    </form>`;
+  },
   offday(_, o = {}) {
     const x = o.id ? S.offdays.find(d => d.id === o.id) : null;
     return `<form data-form="offday">${sheetHead('🚩 全員休みの日を追加')}
@@ -2094,6 +2111,14 @@ async function handleForm(kind, f, btn) {
     if (kind === 'memoReply') {
       applyBoot(await api('replyMemo', { memoId: f.dataset.memo, text: v('text') }));
       refreshAll(); toast('返信しました 💬');
+      return;
+    }
+    if (kind === 'goal') {
+      const k = S.members.findIndex(m => m.id === S.me.id);
+      await api('saveMandala', { cells: { ['g' + k]: { text: v('text') } } });
+      const g = S.goals.find(x => x.k === k);
+      if (g) g.text = v('text'); else S.goals.push({ k, text: v('text') });
+      closeSheet(); render(); toast('最終目標を保存しました 🎯');
       return;
     }
     if (kind === 'offday') {
@@ -2514,6 +2539,7 @@ function mdMineHtml() {
 }
 function mdPlace(key) {
   if (key === 'meta') return 'チャートの名前・目標';
+  if (key[0] === 'g') return `${mdMem(Number(key.slice(1))).name}の最終目標`;
   const n = key.slice(1).split('-').map(Number), tl = t => mdTheme(t).label || `テーマ${t + 1}`;
   if (key[0] === 't') return `テーマ「${tl(n[0])}」`;
   if (key[0] === 'i') return `${tl(n[0])} › ${mdItem(n[0], n[1]).text || '行動'}`;
