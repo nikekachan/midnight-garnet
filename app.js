@@ -2894,7 +2894,7 @@ function propCard(x) {
     ${urls.length ? `<div class="pp-urls">${urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">🔗 ${esc(u.replace(/^https:\/\//, '').slice(0, 60))}</a>`).join('')}</div>` : ''}
     ${x.note ? `<p class="pp-note">${linkify(x.note)}</p>` : ''}
     ${propVotes(x)}
-    ${x.status === 'open' && !mine ? `<div class="pp-btns">${ok ? `<button class="btn ghost sm" data-act="propVote" data-id="${esc(x.id)}" data-v="">承認を取り消す</button>` : `<button class="btn gem sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ok">👍 承認する</button>`}${x.kind === 'gear' ? `<button class="btn danger sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ng">却下する</button>` : ''}</div>` : ''}
+    ${x.status === 'open' && !mine ? `<div class="pp-btns">${ok ? `<button class="btn ghost sm" data-act="propVote" data-id="${esc(x.id)}" data-v="">承認を取り消す</button>` : `<button class="btn gem sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ok">👍 承認する</button>`}<button class="btn danger sm" data-act="propVote" data-id="${esc(x.id)}" data-v="ng">却下する</button></div>` : ''}
     ${canEdit ? `<div class="memo-btns" style="margin-top:8px">${x.status === 'open' ? `<button class="btn ghost sm" data-act="form" data-form="proposal" data-kind="${x.kind}" data-id="${esc(x.id)}">✎ 編集</button>` : ''}<button class="btn danger sm" data-act="confirmDel" data-type="proposal" data-id="${esc(x.id)}" data-label="${esc(x.title)}">削除</button></div>` : ''}
     <div class="replies chat">
       ${cs.length ? `<div class="r-head">💬 意見 ${cs.length}件</div>` : ''}
@@ -2926,7 +2926,7 @@ function viewProposals(kind) {
   const open = all.filter(x => x.status === 'open'), ok = all.filter(x => x.status === 'approved'), ng = all.filter(x => x.status === 'rejected');
   const neta = kind === 'neta';
   return `<h2 class="page-title">${neta ? '🎬 ネタ投稿' : '🛠 道具の予算'}</h2>
-  <p class="muted small" style="margin:-4px 2px 12px">${neta ? 'やりたい動画のネタを出す場所です。ほかの2人が承認したら企画が通ります。意見はチャットでどうぞ。' : '必要な道具と、誰がどれだけ払うかを決める場所です。ほかの2人が承認したら通り、1人でも却下すると却下リストに入ります。'}</p>
+  <p class="muted small" style="margin:-4px 2px 12px">${neta ? 'やりたい動画のネタを出す場所です。ほかの2人が承認したら企画が通り、1人でも却下すると却下リストに入ります。意見はチャットでどうぞ。' : '必要な道具と、誰がどれだけ払うかを決める場所です。ほかの2人が承認したら通り、1人でも却下すると却下リストに入ります。'}</p>
   <button class="btn gem" data-act="form" data-form="proposal" data-kind="${kind}">＋ ${neta ? 'ネタを投稿する' : '道具を提案する'}</button>
   <h3 class="pp-h">検討中 <small>${open.length}</small></h3>
   <div class="dojo-list">${open.length ? open.map(propCard).join('') : '<p class="empty-msg">検討中のものはありません</p>'}</div>
