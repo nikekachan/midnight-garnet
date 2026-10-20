@@ -18,8 +18,15 @@ const store = {
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// 音声・画像の置き場（R2）のURLは、リンクではなくその場で再生・表示する
+const MEDIA_RE = /^https:\/\/mg-media\.[\w-]+\.workers\.dev\/m\/[a-z]+_[0-9a-f]{32}\.([a-z0-9]{2,5})$/;
+const mediaHtml = u => {
+  const ext = (u.match(MEDIA_RE) || [])[1];
+  if (/^(jpg|png|gif|webp|heic)$/.test(ext)) return `<a class="mg-img" href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="画像" loading="lazy"></a>`;
+  return `<span class="mg-audio"><audio controls preload="metadata" src="${u}"></audio><a href="${u}" target="_blank" rel="noopener" download>⬇ 保存</a></span>`;
+};
 const linkify = s => esc(s)
-  .replace(/https:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`)
+  .replace(/https:\/\/[^\s<]+/g, u => MEDIA_RE.test(u) ? mediaHtml(u) : `<a href="${u}" target="_blank" rel="noopener">${u}</a>`)
   .replace(/\n/g, '<br>');
 
 const pad = n => String(n).padStart(2, '0');
@@ -298,6 +305,54 @@ async function busy(btn, fn, label = '送信中…') {
   try { return await fn(); }
   catch (e) { toast(e.message, 'err'); }
   finally { if (btn) { btn.disabled = false; if (label && old != null) btn.innerHTML = old; } }
+}
+
+// ---------- 音声・画像の添付（チャット・返信・コメントの入力欄に 📎 を付ける） ----------
+const EXT_TYPE = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac', aif: 'audio/aiff', aiff: 'audio/aiff',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic' };
+function addAttachButtons(root = document) {
+  $$('form.composer-lite', root).forEach(f => {
+    if (f.querySelector('.attach') || DEMO) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'attach'; b.dataset.act = 'attach'; b.setAttribute('aria-label', '音声・画像を添付'); b.textContent = '📎';
+    f.insertBefore(b, f.firstChild);
+  });
+}
+new MutationObserver(() => addAttachButtons()).observe(document.documentElement, { childList: true, subtree: true });
+function pickAttach(btn) {
+  const form = btn.closest('form'); if (!form) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'audio/*,image/*,.m4a,.mp3,.wav,.aif,.aiff,.flac';
+  inp.onchange = () => { if (inp.files[0]) uploadAttach(inp.files[0], form, btn); };
+  inp.click();
+}
+const mediaType = file => (file.type || EXT_TYPE[(file.name.split('.').pop() || '').toLowerCase()] || '').toLowerCase().replace('audio/x-m4a', 'audio/mp4');
+/** R2 にアップロードして、再生用のURLを返す（btn に進み具合を出す） */
+async function uploadMedia(file, type, btn) {
+  if (file.size > 60 * 1024 * 1024) throw new Error('ファイルが大きすぎます（60MBまで）');
+  btn.textContent = '0%';
+  const t = await api('mediaTicket', { type, size: file.size, name: file.name });
+  await new Promise((ok, ng) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', t.put); x.setRequestHeader('Content-Type', type);
+    x.upload.onprogress = e => { if (e.lengthComputable) btn.textContent = Math.floor(e.loaded / e.total * 100) + '%'; };
+    x.onload = () => x.status === 200 ? ok() : ng(new Error('アップロードに失敗しました（' + x.status + '）'));
+    x.onerror = () => ng(new Error('通信できませんでした'));
+    x.send(file);
+  });
+  return t.url;
+}
+async function uploadAttach(file, form, btn) {
+  const type = mediaType(file);
+  if (!/^(audio|image)\//.test(type)) { toast('音声か画像のファイルを選んでください', 'err'); return; }
+  btn.disabled = true;
+  try {
+    const url = await uploadMedia(file, type, btn);
+    const ta = form.querySelector('textarea[name=text]');
+    if (ta) { ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : (type.startsWith('audio') ? '🎤 ' : '🖼 ') + file.name.replace(/\.[^.]+$/, '') + '\n') + url; }
+    form.requestSubmit();
+  } catch (e) { toast(e.message || String(e), 'err'); }
+  finally { btn.disabled = false; btn.textContent = '📎'; }
 }
 
 // ---------- 起動時のロゴアニメーション（Motion） ----------
@@ -1470,9 +1525,11 @@ function lyricPanel(t, parts) {
         ${x.status === 'skip' ? '<p class="muted small" style="margin:6px 0">この区切りは歌詞なし（間奏など）</p>'
           : mine ? `<textarea class="lp-text" data-idx="${esc(x.idx)}" rows="4" maxlength="3000" placeholder="この区切りの歌詞">${esc(x.text)}</textarea>`
           : x.text ? `<pre class="lp-view">${esc(x.text)}</pre>` : `<p class="muted small" style="margin:6px 0">${esc(w.name)}さんが書くのを待っています</p>`}
+        ${x.demo ? demoPlayer(x) : ''}
         ${x.status === 'revise' && x.note ? `<p class="lp-note">✎ 修正のお願い：${esc(x.note)}</p>` : ''}
         ${x.status !== 'skip' && x.text ? `<div class="lp-checks">${reviewers.map(m => `<span class="lp-chk ${ap.includes(m.id) ? 'on' : ''}" style="--c:${m.color}">${ap.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>` : ''}
         <div class="lp-btns">
+          ${mine && x.status !== 'skip' && !DEMO ? `<button class="btn ghost sm" data-act="lyDemo" data-idx="${esc(x.idx)}">🎤 ${x.demo ? 'デモを差し替え' : 'デモ音源を貼る'}</button>` : ''}
           ${mine && x.status !== 'skip' ? `<button class="btn gem sm" data-act="lySave" data-idx="${esc(x.idx)}">${x.status === 'ok' ? '書き直して再確認' : '保存して確認に出す'}</button>` : ''}
           ${canReview ? `<button class="btn outline sm" data-act="lyOk" data-idx="${esc(x.idx)}">✓ OK</button><button class="btn danger sm" data-act="lyRevise" data-idx="${esc(x.idx)}">✎ 修正をお願い</button>` : ''}
           <button class="btn ghost sm lp-skip" data-act="lySkip" data-idx="${esc(x.idx)}" data-skip="${x.status === 'skip' ? '0' : '1'}">${x.status === 'skip' ? '歌詞ありに戻す' : '歌詞なし'}</button>
@@ -1480,6 +1537,54 @@ function lyricPanel(t, parts) {
       </div>`;
     }).join('')}
   </div>`;
+}
+// デモ音源の小さいプレーヤー（描き直しても止まらないように、DOMの外の Audio を1つだけ使う）
+const demoAudio = new Audio();
+demoAudio.preload = 'none';
+const demoOn = u => demoAudio.src === u && !demoAudio.paused;
+function demoPlayer(x) {
+  return `<div class="lp-demo"><span>🎤 デモ</span>
+    <button type="button" class="dm-b" data-act="demoJump" data-u="${esc(x.demo)}" data-d="-5" aria-label="5秒戻す">−5</button>
+    <button type="button" class="dm-b dm-play" data-act="demoPlay" data-u="${esc(x.demo)}" aria-label="再生・停止">${demoOn(x.demo) ? '❚❚' : '▶'}</button>
+    <button type="button" class="dm-b" data-act="demoJump" data-u="${esc(x.demo)}" data-d="5" aria-label="5秒進める">＋5</button>
+    <time class="dm-t" data-u="${esc(x.demo)}">${demoAudio.src === x.demo ? fmtDemo(demoAudio.currentTime) : ''}</time>
+    ${x.writer === S.me.id ? `<button type="button" class="reply-del" data-act="lyDemoDel" data-idx="${esc(x.idx)}">外す</button>` : ''}</div>`;
+}
+const fmtDemo = t => `${Math.floor(t / 60)}:${pad(Math.floor(t % 60))}`;
+function demoSync() {
+  $$('.lp-demo .dm-play').forEach(b => { b.textContent = demoOn(b.dataset.u) ? '❚❚' : '▶'; });
+  $$('.lp-demo .dm-t').forEach(t => { t.textContent = demoAudio.src === t.dataset.u ? fmtDemo(demoAudio.currentTime) : ''; });
+}
+['play', 'pause', 'ended', 'timeupdate'].forEach(ev => demoAudio.addEventListener(ev, demoSync));
+function demoPlay(u) {
+  if (demoAudio.src !== u) { demoAudio.src = u; demoAudio.play().catch(() => toast('再生できませんでした', 'err')); return; }
+  demoAudio.paused ? demoAudio.play().catch(() => {}) : demoAudio.pause();
+}
+function demoJump(u, d) {
+  if (demoAudio.src !== u) { demoPlay(u); return; }
+  demoAudio.currentTime = Math.max(0, Math.min((demoAudio.duration || Infinity) - 0.1, demoAudio.currentTime + d)); demoSync();
+}
+/** 書きかけの歌詞を消さないように、描き直しの前後で入力中の内容を戻す */
+async function lyKeep(fn) {
+  const keep = $$('#lyPanel .lp-text').map(t => [t.dataset.idx, t.value]);
+  await fn();
+  keep.forEach(([i, val]) => { const t = $(`#lyPanel .lp-text[data-idx="${i}"]`); if (t) t.value = val; });
+}
+function pickDemo(btn) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'audio/*,.m4a,.mp3,.wav,.aif,.aiff,.flac';
+  inp.onchange = async () => {
+    const file = inp.files[0]; if (!file) return;
+    const type = mediaType(file);
+    if (!type.startsWith('audio/')) { toast('音声ファイルを選んでください', 'err'); return; }
+    const old = btn.innerHTML; btn.disabled = true;
+    try {
+      const url = await uploadMedia(file, type, btn);
+      btn.innerHTML = old; btn.disabled = false;
+      await lyKeep(() => lyCall('setLyricDemo', { idx: btn.dataset.idx, demo: url }, btn, 'デモ音源を貼りました 🎤'));
+    } catch (e) { toast(e.message || String(e), 'err'); btn.innerHTML = old; btn.disabled = false; }
+  };
+  inp.click();
 }
 async function lyCall(action, data, btn, msg) {
   await busy(btn, async () => {
@@ -1850,6 +1955,7 @@ const FORMS = {
     if (kind === 'neta') return `<form data-form="proposal" data-kind="neta" data-id="${esc(x ? x.id : '')}">${sheetHead(x ? 'ネタを編集' : '🎬 ネタを投稿')}
       <p class="hint" style="margin:-6px 0 10px">空欄の項目は「未定」と表示されます。${x ? '編集すると、承認はやり直しになります。' : ''}</p>
       <label>どんな動画？（企画の名前）<input name="title" maxlength="100" required value="${esc(x ? x.title : '')}" placeholder="例：サビだけ3人で歌い回すショート"></label>
+      <div class="seg kind-seg">${Object.keys(ORIENT).map(k => `<label class="seg-i"><input type="radio" name="orient" value="${k}" ${k === (d.orient || '') ? 'checked' : ''}><span>${ORIENT[k]}</span></label>`).join('')}</div>
       <label>参考動画のURL（1行に1つ）<textarea name="url" rows="2" inputmode="url" placeholder="https://www.tiktok.com/…">${esc(x ? x.url : '')}</textarea></label>
       ${NETA_F.map(([f, l]) => `<label>${l}<input name="${f}" maxlength="200" value="${esc(d[f] || '')}" placeholder="未定"></label>`).join('')}
       <label>くわしく<textarea name="note" rows="4" maxlength="3000" placeholder="やりたいこと・見どころなど">${esc(x ? x.note : '')}</textarea></label>
@@ -1863,6 +1969,7 @@ const FORMS = {
       <label>金額（円）<input name="price" type="number" min="0" inputmode="numeric" value="${esc(d.price || '')}" placeholder="例：25000"></label>
       <div class="seg kind-seg"><label class="seg-i"><input type="radio" name="mode" value="pct" ${mode === 'pct' ? 'checked' : ''}><span>％で分ける</span></label><label class="seg-i"><input type="radio" name="mode" value="yen" ${mode === 'yen' ? 'checked' : ''}><span>金額で分ける</span></label></div>
       <div class="pp-split-in">${S.members.map(m => `<label style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><input name="sp_${m.id}" type="number" min="0" step="any" inputmode="decimal" value="${esc(split[m.id] || '')}" placeholder="0"></label>`).join('')}</div>
+      <p class="hint" style="margin:-6px 0 12px">2人ぶん入れると、残りの1人は自動で入ります。</p>
       <label>理由・メモ<textarea name="note" rows="3" maxlength="3000" placeholder="なぜ必要か、いつまでに欲しいか など">${esc(x ? x.note : '')}</textarea></label>
       <button class="btn gem" type="submit">${x ? '保存する' : '提案する'}</button>
     </form>`;
@@ -2127,7 +2234,7 @@ async function handleForm(kind, f, btn) {
     }
     if (kind === 'proposal') {
       const pk = f.dataset.kind, data = {};
-      if (pk === 'neta') NETA_F.forEach(([k]) => { data[k] = v(k); });
+      if (pk === 'neta') { NETA_F.forEach(([k]) => { data[k] = v(k); }); data.orient = (f.querySelector('[name=orient]:checked') || {}).value || ''; }
       else { data.price = v('price'); data.mode = (f.querySelector('[name=mode]:checked') || {}).value || 'pct'; data.split = {}; S.members.forEach(m => { data.split[m.id] = v('sp_' + m.id); }); }
       applyBoot(await api('saveProposal', { id: f.dataset.id || '', kind: pk, title: v('title'), url: v('url'), note: v('note'), data }));
       closeSheet(); S.view = 'board'; S.boardMode = pk; refreshAll(); toast(f.dataset.id ? '保存しました' : pk === 'neta' ? 'ネタを投稿しました 🎬' : '道具を提案しました 🛠');
@@ -2597,6 +2704,23 @@ document.addEventListener('input', e => {
   mdRefresh(false);
 });
 document.addEventListener('input', e => { if (e.target.id === 'syncSeek') syncAudio.currentTime = Number(e.target.value); });
+// 道具の予算：2人ぶん入れたら、残りの1人に「100% − 合計」または「金額 − 合計」を自動で入れる
+function gearAutoFill(f, typed) {
+  const ins = $$('.pp-split-in input', f); if (ins.length < 2) return;
+  if (typed && typed.closest('.pp-split-in')) delete typed.dataset.auto;
+  const manual = ins.filter(i => !i.dataset.auto && i.value !== ''), rest = ins.filter(i => !manual.includes(i));
+  if (rest.length !== 1) { rest.forEach(i => { if (i.dataset.auto) { i.value = ''; delete i.dataset.auto; } }); return; }
+  if (rest[0] === typed) return; // いま消した欄には入れない（打ち直し中）
+  const yenMode = ((f.querySelector('[name=mode]:checked') || {}).value) === 'yen', total = yenMode ? Number((f.querySelector('[name=price]') || {}).value) || 0 : 100;
+  if (yenMode && !total) { if (rest[0].dataset.auto) { rest[0].value = ''; delete rest[0].dataset.auto; } return; }
+  const left = Math.round((total - manual.reduce((t, i) => t + (Number(i.value) || 0), 0)) * 100) / 100;
+  if (left < 0) { if (rest[0].dataset.auto) { rest[0].value = ''; delete rest[0].dataset.auto; } return; }
+  rest[0].value = String(left); rest[0].dataset.auto = '1';
+}
+['input', 'change'].forEach(ev => document.addEventListener(ev, e => {
+  const f = e.target.closest && e.target.closest('form[data-form=proposal][data-kind=gear]');
+  if (f && (e.target.closest('.pp-split-in') || e.target.name === 'price' || e.target.name === 'mode')) gearAutoFill(f, ev === 'input' ? e.target : null);
+}));
 document.addEventListener('keydown', e => {
   if (!(S.view === 'works' && S.worksMode === 'sync' && S.syncRows)) return;
   const tag = (e.target.tagName || '').toLowerCase();
@@ -2865,7 +2989,21 @@ const propData = x => { try { return JSON.parse(x.data || '{}'); } catch (e) { r
 /** 自分の承認待ち（自分が書いたものでなく、まだ投票していない検討中の企画） */
 const propWaiting = kind => S.me ? S.proposals.filter(x => x.kind === kind && x.status === 'open' && x.author !== S.me.id && !splitIds(x.approvals).includes(S.me.id)) : [];
 const NETA_F = [['mono', '🎒 モノ'], ['basho', '📍 場所'], ['hito', '👥 ひと'], ['jikan', '⏰ 時間']];
+const ORIENT = { '': '未定', tate: '📱 縦動画', yoko: '🖥 横動画' };
 const yen = n => Math.round(n).toLocaleString('ja-JP') + '円';
+/** 道具の予算で、その人が払う金額（円） */
+function propShare(x, id) {
+  const d = propData(x), v = Number((d.split || {})[id] || 0);
+  return d.mode === 'yen' ? v : (Number(d.price) || 0) * v / 100;
+}
+function myGearTotal(all) {
+  const sum = list => list.reduce((t, x) => t + propShare(x, S.me.id), 0);
+  const ok = sum(all.filter(x => x.status === 'approved')), open = sum(all.filter(x => x.status === 'open'));
+  return `<div class="pp-mine" style="--c:${mem(S.me.id).color}">
+    <div><small>💰 自分が払う合計（購入OK）</small><b>${yen(ok)}</b></div>
+    <div><small>検討中もぜんぶ通ったら</small><b>${yen(ok + open)}</b></div>
+  </div>`;
+}
 function propVotes(x) {
   const ok = splitIds(x.approvals), ng = splitIds(x.rejects), voters = S.members.filter(m => m.id !== x.author);
   return `<div class="pp-votes">${voters.map(m => `<span class="pp-v ${ng.includes(m.id) ? 'ng' : ok.includes(m.id) ? 'ok' : ''}" style="--c:${m.color}">${ng.includes(m.id) ? '✕' : ok.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>`;
@@ -2878,7 +3016,7 @@ function propCard(x) {
   if (x.kind === 'neta') {
     const site = dojoSite(urls[0]);
     body = `${urls[0] && site.thumb ? `<a class="dj-link" href="${esc(urls[0])}" target="_blank" rel="noopener"><img class="dj-thumb" src="${site.thumb}" alt="" loading="lazy"></a>` : ''}
-      <div class="pp-chips">${NETA_F.map(([f, l]) => `<div class="pp-chip ${d[f] ? '' : 'tbd'}"><small>${l}</small><b>${d[f] ? esc(d[f]) : '未定'}</b></div>`).join('')}</div>`;
+      <div class="pp-chips">${d.orient ? `<div class="pp-chip pp-orient"><small>向き</small><b>${ORIENT[d.orient]}</b></div>` : ''}${NETA_F.map(([f, l]) => `<div class="pp-chip ${d[f] ? '' : 'tbd'}"><small>${l}</small><b>${d[f] ? esc(d[f]) : '未定'}</b></div>`).join('')}</div>`;
   } else {
     const split = d.split || {}, ids = Object.keys(split), sum = ids.reduce((t, id) => t + Number(split[id] || 0), 0);
     body = `<div class="pp-price">${d.price ? `<b>${yen(d.price)}</b>` : '<span class="muted">金額未定</span>'}</div>
@@ -2927,6 +3065,7 @@ function viewProposals(kind) {
   const neta = kind === 'neta';
   return `<h2 class="page-title">${neta ? '🎬 ネタ投稿' : '🛠 道具の予算'}</h2>
   <p class="muted small" style="margin:-4px 2px 12px">${neta ? 'やりたい動画のネタを出す場所です。ほかの2人が承認したら企画が通り、1人でも却下すると却下リストに入ります。意見はチャットでどうぞ。' : '必要な道具と、誰がどれだけ払うかを決める場所です。ほかの2人が承認したら通り、1人でも却下すると却下リストに入ります。'}</p>
+  ${neta ? '' : myGearTotal(all)}
   <button class="btn gem" data-act="form" data-form="proposal" data-kind="${kind}">＋ ${neta ? 'ネタを投稿する' : '道具を提案する'}</button>
   <h3 class="pp-h">検討中 <small>${open.length}</small></h3>
   <div class="dojo-list">${open.length ? open.map(propCard).join('') : '<p class="empty-msg">検討中のものはありません</p>'}</div>
@@ -3212,6 +3351,7 @@ document.addEventListener('click', e => {
     case 'copyLyrics': copyText(el.dataset.text, '歌詞をコピーしました'); break;
     case 'calMode': S.calMode = el.dataset.m; render(); break;
     case 'boardMode': S.boardMode = el.dataset.m; render(); break;
+    case 'attach': pickAttach(el); break;
     case 'propVote': propVote(el); break;
     case 'freeMode': S.freeMode = Number(el.dataset.m); render(); break;
     case 'dayShift': S.day = addDays(S.day, Number(el.dataset.d)); S.month = S.day.slice(0, 7); render(); break;
@@ -3236,6 +3376,10 @@ document.addEventListener('click', e => {
     case 'lySave': { const ta = $(`#lyPanel .lp-text[data-idx="${el.dataset.idx}"]`); lyCall('saveLyricPart', { idx: el.dataset.idx, text: ta ? ta.value : '' }, el, '確認に出しました 👀'); break; }
     case 'lyOk': lyCall('reviewLyricPart', { idx: el.dataset.idx, ok: true }, el, 'OKしました ✓'); break;
     case 'lyRevise': openSheet(`<form data-form="lyRevise" data-idx="${esc(el.dataset.idx)}">${sheetHead('修正のお願い')}<label>どこをどう直してほしいか<textarea name="note" rows="3" maxlength="500" required placeholder="例：2行目の言葉をもっと明るく"></textarea></label><button class="btn danger" type="submit">担当にお願いする</button></form>`); break;
+    case 'lyDemo': pickDemo(el); break;
+    case 'lyDemoDel': if (confirm('この区切りのデモ音源を外しますか？')) lyKeep(() => lyCall('setLyricDemo', { idx: el.dataset.idx, demo: '' }, el, 'デモ音源を外しました')); break;
+    case 'demoPlay': demoPlay(el.dataset.u); break;
+    case 'demoJump': demoJump(el.dataset.u, Number(el.dataset.d)); break;
     case 'lySkip': lyCall('skipLyricPart', { idx: el.dataset.idx, skip: el.dataset.skip === '1' }, el); break;
     case 'ideaDel': {
       const evId = (S.eventIdeas.find(i => i.id === el.dataset.id) || {}).eventId;
