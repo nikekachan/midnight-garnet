@@ -1505,17 +1505,20 @@ function lyricPanel(t, parts) {
   if (!parts) return '<div id="lyPanel" class="ly-panel"><div class="lt-load" data-lottie="lottie/loader.json"></div></div>';
   const live = parts.filter(x => x.status !== 'skip');
   const ok = live.filter(x => x.status === 'ok').length;
-  const writers = [...new Set(live.map(x => x.writer))];
-  const reviewersFor = w => S.members.filter(m => m.id !== w && writers.includes(m.id));
-  const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.status === 'review' && reviewersFor(x.writer).some(m => m.id === S.me.id) && !splitIds(x.approvals).includes(S.me.id))).length;
+  // 確認する人：今の歌詞を書いた人以外の全員（いつも2人）。作曲者は担当じゃない区切りも直せる
+  const by = x => x.textBy || x.writer;
+  const reviewersFor = x => S.members.filter(m => m.id !== by(x));
+  const composers = [...new Set(S.tasks.filter(k => k.projectId && k.projectId === t.projectId && k.kind === 'composition').flatMap(k => splitIds(k.assignee)))];
+  const iCompose = composers.includes(S.me.id);
+  const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.status === 'review' && by(x) !== S.me.id && !splitIds(x.approvals).includes(S.me.id))).length;
   return `<div id="lyPanel" class="ly-panel">
     <div class="ly-top"><b>✍️ 歌詞の担当と確認</b><span>OK ${ok}/${live.length}</span></div>
-    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、<b>ほかの歌詞担当</b>が確認して「OK」を押します（担当が1人だけなら確認なしでOK）。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
+    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、<b>書いた人以外の2人</b>が確認して「OK」を押します。作曲者は、担当じゃない区切りも直せます。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
     ${parts.map(x => {
       const w = mem(x.writer), mine = x.writer === S.me.id, [stLabel, stCls] = LY_ST[x.status] || LY_ST[''];
       const ap = splitIds(x.approvals);
-      const reviewers = reviewersFor(x.writer);
-      const canReview = !mine && x.status === 'review' && reviewers.some(m => m.id === S.me.id) && !ap.includes(S.me.id);
+      const reviewers = reviewersFor(x), canEdit = mine || iCompose;
+      const canReview = by(x) !== S.me.id && x.status === 'review' && reviewers.some(m => m.id === S.me.id) && !ap.includes(S.me.id);
       return `<div class="ly-part st-${stCls}" style="--c:${w.color}">
         <div class="lp-head">
           <span class="lp-sec">${x.time ? `<time>${esc(x.time)}〜</time>` : ''}${esc(x.label || '歌詞')}</span>
@@ -1523,14 +1526,15 @@ function lyricPanel(t, parts) {
         </div>
         <label class="lp-writer">担当<select data-change="lyWriter" data-idx="${esc(x.idx)}">${S.members.map(m => `<option value="${m.id}" ${m.id === x.writer ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
         ${x.status === 'skip' ? '<p class="muted small" style="margin:6px 0">この区切りは歌詞なし（間奏など）</p>'
-          : mine ? `<textarea class="lp-text" data-idx="${esc(x.idx)}" rows="4" maxlength="3000" placeholder="この区切りの歌詞">${esc(x.text)}</textarea>`
+          : canEdit ? `<textarea class="lp-text" data-idx="${esc(x.idx)}" rows="4" maxlength="3000" placeholder="この区切りの歌詞">${esc(x.text)}</textarea>`
           : x.text ? `<pre class="lp-view">${esc(x.text)}</pre>` : `<p class="muted small" style="margin:6px 0">${esc(w.name)}さんが書くのを待っています</p>`}
         ${x.demo ? demoPlayer(x) : ''}
         ${x.status === 'revise' && x.note ? `<p class="lp-note">✎ 修正のお願い：${esc(x.note)}</p>` : ''}
         ${x.status !== 'skip' && x.text ? `<div class="lp-checks">${reviewers.map(m => `<span class="lp-chk ${ap.includes(m.id) ? 'on' : ''}" style="--c:${m.color}">${ap.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>` : ''}
         <div class="lp-btns">
           ${mine && x.status !== 'skip' && !DEMO ? `<button class="btn ghost sm" data-act="lyDemo" data-idx="${esc(x.idx)}">🎤 ${x.demo ? 'デモを差し替え' : 'デモ音源を貼る'}</button>` : ''}
-          ${mine && x.status !== 'skip' ? `<button class="btn gem sm" data-act="lySave" data-idx="${esc(x.idx)}">${x.status === 'ok' ? '書き直して再確認' : '保存して確認に出す'}</button>` : ''}
+          ${x.textBy && x.textBy !== x.writer ? `<p class="muted small" style="margin:4px 0">✎ ${esc(mem(x.textBy).name)}（作曲者）が直しました</p>` : ''}
+          ${canEdit && x.status !== 'skip' ? `<button class="btn gem sm" data-act="lySave" data-idx="${esc(x.idx)}">${x.status === 'ok' ? '書き直して再確認' : '保存して確認に出す'}</button>` : ''}
           ${canReview ? `<button class="btn outline sm" data-act="lyOk" data-idx="${esc(x.idx)}">✓ OK</button><button class="btn danger sm" data-act="lyRevise" data-idx="${esc(x.idx)}">✎ 修正をお願い</button>` : ''}
           <button class="btn ghost sm lp-skip" data-act="lySkip" data-idx="${esc(x.idx)}" data-skip="${x.status === 'skip' ? '0' : '1'}">${x.status === 'skip' ? '歌詞ありに戻す' : '歌詞なし'}</button>
         </div>
