@@ -1974,6 +1974,7 @@ const FORMS = {
       <div class="seg kind-seg"><label class="seg-i"><input type="radio" name="mode" value="pct" ${mode === 'pct' ? 'checked' : ''}><span>％で分ける</span></label><label class="seg-i"><input type="radio" name="mode" value="yen" ${mode === 'yen' ? 'checked' : ''}><span>金額で分ける</span></label></div>
       <div class="pp-split-in">${S.members.map(m => `<label style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><input name="sp_${m.id}" type="number" min="0" step="any" inputmode="decimal" value="${esc(split[m.id] || '')}" placeholder="0"></label>`).join('')}</div>
       <p class="hint" style="margin:-6px 0 12px">2人ぶん入れると、残りの1人は自動で入ります。</p>
+      <label>決済する人（お店で払う・注文する人）<select name="payer"><option value="">未定</option>${S.members.map(m => `<option value="${m.id}" ${d.payer === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
       <label>理由・メモ<textarea name="note" rows="3" maxlength="3000" placeholder="なぜ必要か、いつまでに欲しいか など">${esc(x ? x.note : '')}</textarea></label>
       <button class="btn gem" type="submit">${x ? '保存する' : '提案する'}</button>
     </form>`;
@@ -2239,7 +2240,7 @@ async function handleForm(kind, f, btn) {
     if (kind === 'proposal') {
       const pk = f.dataset.kind, data = {};
       if (pk === 'neta') { NETA_F.forEach(([k]) => { data[k] = v(k); }); data.orient = (f.querySelector('[name=orient]:checked') || {}).value || ''; }
-      else { data.price = v('price'); data.mode = (f.querySelector('[name=mode]:checked') || {}).value || 'pct'; data.split = {}; S.members.forEach(m => { data.split[m.id] = v('sp_' + m.id); }); }
+      else { data.price = v('price'); data.mode = (f.querySelector('[name=mode]:checked') || {}).value || 'pct'; data.split = {}; S.members.forEach(m => { data.split[m.id] = v('sp_' + m.id); }); data.payer = v('payer'); }
       applyBoot(await api('saveProposal', { id: f.dataset.id || '', kind: pk, title: v('title'), url: v('url'), note: v('note'), data }));
       closeSheet(); S.view = 'board'; S.boardMode = pk; refreshAll(); toast(f.dataset.id ? '保存しました' : pk === 'neta' ? 'ネタを投稿しました 🎬' : '道具を提案しました 🛠');
       return;
@@ -3002,7 +3003,7 @@ function propShare(x, id) {
 }
 function myGearTotal(all) {
   const sum = list => list.reduce((t, x) => t + propShare(x, S.me.id), 0);
-  const ok = sum(all.filter(x => x.status === 'approved')), open = sum(all.filter(x => x.status === 'open'));
+  const ok = sum(all.filter(x => x.status === 'approved' || x.status === 'settled')), open = sum(all.filter(x => x.status === 'open'));
   return `<div class="pp-mine" style="--c:${mem(S.me.id).color}">
     <div><small>💰 自分が払う合計（購入OK）</small><b>${yen(ok)}</b></div>
     <div><small>検討中もぜんぶ通ったら</small><b>${yen(ok + open)}</b></div>
@@ -3012,9 +3013,57 @@ function propVotes(x) {
   const ok = splitIds(x.approvals), ng = splitIds(x.rejects), voters = S.members.filter(m => m.id !== x.author);
   return `<div class="pp-votes">${voters.map(m => `<span class="pp-v ${ng.includes(m.id) ? 'ng' : ok.includes(m.id) ? 'ok' : ''}" style="--c:${m.color}">${ng.includes(m.id) ? '✕' : ok.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>`;
 }
+/** 道具の決済：決済する人・領収書・ほかの人が払ったか（決済する人が入力）。全員済むと精算済みリストへ */
+function gearPay(x, d) {
+  const payer = d.payer ? mem(d.payer) : null, me = S.me.id, adm = isAdminMode();
+  const canPayer = x.status !== 'settled' && (x.author === me || d.payer === me || adm), isPayer = d.payer === me || adm;
+  const pay = x.status === 'approved' || x.status === 'settled', rc = d.receipts || [], paid = d.paid || {};
+  const owe = Object.keys(d.split || {}).filter(id => Number(d.split[id]) > 0 && id !== d.payer);
+  let h = `<div class="pp-pay"><div class="pp-payer"><small>🧾 決済する人</small>${payer ? `<span class="who" style="--c:${payer.color}">${esc(payer.name)}</span>` : '<span class="muted">未定</span>'}</div>`;
+  if (canPayer) h += `<div class="pp-pick">${S.members.map(m => `<button class="pp-c ${d.payer === m.id ? 'on' : ''}" style="--c:${m.color}" data-act="gearPay" data-op="payer" data-id="${esc(x.id)}" data-m="${d.payer === m.id ? '' : m.id}">${esc(m.name)}</button>`).join('')}</div>`;
+  if (pay && payer) {
+    h += `<div class="pp-rc">${rc.map(u => `<span class="pp-rc-i">${mediaHtml(u)}${isPayer && x.status !== 'settled' ? `<button class="reply-del" data-act="gearPay" data-op="unreceipt" data-id="${esc(x.id)}" data-url="${esc(u)}">削除</button>` : ''}</span>`).join('')}</div>
+      ${isPayer ? `<button class="btn ${rc.length ? 'ghost' : 'gem'} sm" data-act="gearReceipt" data-id="${esc(x.id)}">🖼 領収書の画像を投稿</button>` : rc.length ? '' : `<p class="muted small">${esc(payer.name)}の決済（領収書の投稿）待ち</p>`}
+      <div class="pp-paid"><div style="--c:${payer.color}"><span class="who" style="--c:${payer.color}">${esc(payer.name)}</span><b class="${rc.length ? 'ok' : ''}">${rc.length ? '✓ 決済済み' : '… 決済待ち'}</b></div>
+      ${owe.map(id => { const m = mem(id), on = !!paid[id];
+        return `<div style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><small>${yen(propShare(x, id))}</small>${isPayer ? `<button class="pp-c ${on ? 'on' : ''}" style="--c:${m.color}" data-act="gearPay" data-op="paid" data-id="${esc(x.id)}" data-m="${id}" data-v="${on ? '' : '1'}">${on ? '✓ 決済済み' : '決済待ち'}</button>` : `<b class="${on ? 'ok' : ''}">${on ? '✓ 決済済み' : '… 決済待ち'}</b>`}</div>`; }).join('')}</div>
+      ${isPayer && x.status === 'approved' ? '<p class="hint" style="margin:4px 0 0">ほかの人から受け取ったら「決済待ち」を押して「決済済み」にしてください。領収書と全員の決済がそろうと「精算済み」に移ります。</p>' : ''}`;
+  }
+  return h + '</div>';
+}
+async function gearPayAct(el) {
+  const o = el.dataset, req = { id: o.id, op: o.op };
+  if (o.op === 'payer') req.payer = o.m;
+  if (o.op === 'paid') { req.member = o.m; req.paid = !!o.v; }
+  if (o.op === 'unreceipt') { if (!confirm('この領収書の画像を外しますか？')) return; req.url = o.url; }
+  el.disabled = true;
+  try {
+    applyBoot(await api('settleGear', req)); refreshAll();
+    const x = S.proposals.find(p => p.id === o.id);
+    if (x && x.status === 'settled') { toast('全員の決済が済みました 🎉 精算済みへ'); FX.confetti(); }
+    else toast(o.op === 'payer' ? (o.m ? '決済する人を決めました' : '決済する人を未定にしました') : o.op === 'paid' ? (o.v ? '決済済みにしました ✓' : '決済待ちに戻しました') : '外しました');
+  } catch (e) { toast(e.message, 'err'); el.disabled = false; }
+}
+function gearReceipt(btn) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    const file = inp.files[0]; if (!file) return;
+    const type = mediaType(file);
+    if (!type.startsWith('image/')) { toast('画像のファイルを選んでください', 'err'); return; }
+    btn.disabled = true;
+    try {
+      const url = await uploadMedia(file, type, btn);
+      applyBoot(await api('settleGear', { id: btn.dataset.id, op: 'receipt', url })); refreshAll();
+      const x = S.proposals.find(p => p.id === btn.dataset.id);
+      if (x && x.status === 'settled') { toast('全員の決済が済みました 🎉 精算済みへ'); FX.confetti(); } else toast('領収書を投稿しました 🧾');
+    } catch (e) { toast(e.message || String(e), 'err'); btn.disabled = false; btn.textContent = '🖼 領収書の画像を投稿'; }
+  };
+  inp.click();
+}
 function propCard(x) {
   const a = mem(x.author), d = propData(x), mine = x.author === S.me.id, canEdit = mine || isAdminMode();
-  const ok = splitIds(x.approvals).includes(S.me.id), st = { open: ['検討中', ''], approved: [x.kind === 'neta' ? '企画通過 🎉' : '購入OK 🎉', 'ok'], rejected: ['却下', 'ng'] }[x.status] || ['検討中', ''];
+  const ok = splitIds(x.approvals).includes(S.me.id), st = { open: ['検討中', ''], approved: [x.kind === 'neta' ? '企画通過 🎉' : '購入OK 🎉', 'ok'], rejected: ['却下', 'ng'], settled: ['精算済み 🧾', 'ok'] }[x.status] || ['検討中', ''];
   const urls = String(x.url || '').split('\n').filter(Boolean);
   let body = '';
   if (x.kind === 'neta') {
@@ -3026,7 +3075,8 @@ function propCard(x) {
     body = `<div class="pp-price">${d.price ? `<b>${yen(d.price)}</b>` : '<span class="muted">金額未定</span>'}</div>
       ${ids.length ? `<div class="pp-split">${ids.map(id => { const m = mem(id), v = Number(split[id]);
         return `<div style="--c:${m.color}"><span class="who" style="--c:${m.color}">${esc(m.name)}</span><b>${d.mode === 'yen' ? yen(v) : `${v}%`}</b>${d.mode !== 'yen' && d.price ? `<small>${yen(d.price * v / 100)}</small>` : ''}</div>`; }).join('')}
-        ${d.mode !== 'yen' && Math.abs(sum - 100) > 0.01 ? `<p class="pp-warn">合計が${sum}%です（100%になっていません）</p>` : ''}${d.mode === 'yen' && d.price && sum !== d.price ? `<p class="pp-warn">合計${yen(sum)}／金額${yen(d.price)}</p>` : ''}</div>` : '<p class="muted small">負担の割り振りは未定</p>'}`;
+        ${d.mode !== 'yen' && Math.abs(sum - 100) > 0.01 ? `<p class="pp-warn">合計が${sum}%です（100%になっていません）</p>` : ''}${d.mode === 'yen' && d.price && sum !== d.price ? `<p class="pp-warn">合計${yen(sum)}／金額${yen(d.price)}</p>` : ''}</div>` : '<p class="muted small">負担の割り振りは未定</p>'}
+      ${gearPay(x, d)}`;
   }
   const cs = S.proposalComments.filter(c => c.propId === x.id).sort((p, q) => String(p.createdAt).localeCompare(String(q.createdAt)));
   return `<article class="pp" style="--c:${a.color}">
@@ -3065,7 +3115,7 @@ async function propVote(el) {
 }
 function viewProposals(kind) {
   const all = S.proposals.filter(x => x.kind === kind).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const open = all.filter(x => x.status === 'open'), ok = all.filter(x => x.status === 'approved'), ng = all.filter(x => x.status === 'rejected');
+  const open = all.filter(x => x.status === 'open'), ok = all.filter(x => x.status === 'approved'), ng = all.filter(x => x.status === 'rejected'), done = all.filter(x => x.status === 'settled');
   const neta = kind === 'neta';
   return `<h2 class="page-title">${neta ? '🎬 ネタ投稿' : '🛠 道具の予算'}</h2>
   <p class="muted small" style="margin:-4px 2px 12px">${neta ? 'やりたい動画のネタを出す場所です。ほかの2人が承認したら企画が通り、1人でも却下すると却下リストに入ります。意見はチャットでどうぞ。' : '必要な道具と、誰がどれだけ払うかを決める場所です。ほかの2人が承認したら通り、1人でも却下すると却下リストに入ります。'}</p>
@@ -3074,6 +3124,7 @@ function viewProposals(kind) {
   <h3 class="pp-h">検討中 <small>${open.length}</small></h3>
   <div class="dojo-list">${open.length ? open.map(propCard).join('') : '<p class="empty-msg">検討中のものはありません</p>'}</div>
   ${ok.length ? `<h3 class="pp-h">${neta ? '✅ 通った企画' : '✅ 購入OK'} <small>${ok.length}</small></h3><div class="dojo-list">${ok.map(propCard).join('')}</div>` : ''}
+  ${done.length ? `<details class="pp-rej"><summary>🧾 精算済み <small>${done.length}</small></summary><div class="dojo-list">${done.map(propCard).join('')}</div></details>` : ''}
   ${ng.length ? `<details class="pp-rej"><summary>🙅 却下リスト <small>${ng.length}</small></summary><div class="dojo-list">${ng.map(propCard).join('')}</div></details>` : ''}`;
 }
 
@@ -3357,6 +3408,8 @@ document.addEventListener('click', e => {
     case 'boardMode': S.boardMode = el.dataset.m; render(); break;
     case 'attach': pickAttach(el); break;
     case 'propVote': propVote(el); break;
+    case 'gearPay': gearPayAct(el); break;
+    case 'gearReceipt': gearReceipt(el); break;
     case 'freeMode': S.freeMode = Number(el.dataset.m); render(); break;
     case 'dayShift': S.day = addDays(S.day, Number(el.dataset.d)); S.month = S.day.slice(0, 7); render(); break;
     case 'availEdit': S.weekEdit = null; openSheet(FORMS.availWeek(null, { date: el.dataset.date })); break;
@@ -3765,6 +3818,7 @@ const Mock = (() => {
     saveDojo(r, m) { const o = { kind: r.kind, url: r.url, title: r.title, good: r.good, learn: r.learn, updatedAt: now() }; if (r.id) Object.assign(dojo.find(d => d.id === r.id), o); else dojo.push(Object.assign({ id: 'dj' + (++seq), author: m.id, createdAt: now() }, o)); return boot(m); },
     saveProposal(r, m) { const o = { title: r.title, url: r.url || '', note: r.note || '', data: JSON.stringify(r.data || {}), approvals: '', rejects: '', status: 'open', updatedAt: now() }; if (r.id) Object.assign(proposals.find(p => p.id === r.id), o); else proposals.push(Object.assign({ id: 'pp' + (++seq), kind: r.kind, author: m.id, createdAt: now() }, o)); return boot(m); },
     voteProposal(r, m) { const x = proposals.find(p => p.id === r.id); const ok = x.approvals.split(',').filter(id => id && id !== m.id), ng = x.rejects.split(',').filter(id => id && id !== m.id); if (r.vote === 'ok') ok.push(m.id); if (r.vote === 'ng') ng.push(m.id); x.approvals = ok.join(','); x.rejects = ng.join(','); x.status = ng.length ? 'rejected' : MEMBERS.filter(y => y.id !== x.author).every(y => ok.includes(y.id)) ? 'approved' : 'open'; return boot(m); },
+    settleGear(r, m) { const x = proposals.find(p => p.id === r.id), d = JSON.parse(x.data || '{}'); if (r.op === 'payer') d.payer = r.payer; else { if (r.op === 'receipt') d.receipts = (d.receipts || []).concat([r.url]); if (r.op === 'unreceipt') d.receipts = (d.receipts || []).filter(u => u !== r.url); if (r.op === 'paid') { d.paid = d.paid || {}; if (r.paid) d.paid[r.member] = now(); else delete d.paid[r.member]; } const owe = Object.keys(d.split || {}).filter(id => Number(d.split[id]) > 0 && id !== d.payer); x.status = (d.receipts || []).length && owe.every(id => (d.paid || {})[id]) ? 'settled' : 'approved'; } x.data = JSON.stringify(d); return boot(m); },
     deleteProposal(r, m) { const i = proposals.findIndex(p => p.id === r.id); if (i >= 0) proposals.splice(i, 1); return boot(m); },
     commentProposal(r, m) { proposalComments.push({ id: 'pc' + (++seq), propId: r.propId, author: m.id, text: String(r.text || ''), createdAt: now() }); return boot(m); },
     deleteProposalComment(r, m) { const i = proposalComments.findIndex(x => x.id === r.id); if (i >= 0) proposalComments.splice(i, 1); return boot(m); },

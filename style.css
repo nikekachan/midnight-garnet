@@ -965,6 +965,17 @@ html.lenis,html.lenis body{height:auto}
 .pp-split-in input{margin:0}
 .pp-chip.pp-orient{grid-column:1/-1;border-color:var(--gold,#e8c27a)}
 .pp-split-in input[data-auto]{border-style:dashed;color:var(--gold,#e8c27a)}
+.pp-pay{display:grid;gap:8px;margin:10px 0 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}
+.pp-payer{display:flex;align-items:center;gap:8px} .pp-payer small{font-size:12px;color:var(--muted)}
+.pp-pick{display:flex;flex-wrap:wrap;gap:6px}
+.pp-c{padding:6px 12px;border-radius:99px;border:1px solid var(--c,var(--line));background:transparent;color:var(--c,var(--muted));font-size:12px;font-weight:600}
+.pp-c.on{background:color-mix(in srgb,var(--c) 28%,transparent);color:#fff}
+.pp-rc{display:flex;flex-wrap:wrap;gap:6px} .pp-rc:empty{display:none}
+.pp-rc-i{display:grid;gap:2px;max-width:46%} .pp-rc-i img{max-height:160px;border-radius:8px}
+.pp-paid{display:grid;gap:4px}
+.pp-paid>div{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;border-left:3px solid var(--c);padding-left:8px}
+.pp-paid small{color:var(--muted);font-size:12px} .pp-paid b{font-size:12px;color:var(--muted)} .pp-paid b.ok{color:var(--ok)}
+.pp-paid>div:first-child{grid-template-columns:1fr auto}
 .pp-mine{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 12px}
 .pp-mine>div{border:1px solid var(--line);border-left:3px solid var(--c);border-radius:10px;padding:8px 10px;display:grid;gap:2px;background:var(--surface2)}
 .pp-mine small{font-size:11px;color:var(--muted)} .pp-mine b{font-size:18px}
