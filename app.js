@@ -1481,6 +1481,7 @@ function renderDetail(toBottom) {
       </dl>
     </div>
     ${t.kind === 'lyrics' && t.status === 'open' ? lyricPanel(t, d.parts) : ''}
+    ${t.kind === 'lyrics' && t.status !== 'open' && (d.parts || []).some(x => x.demo) ? `<div class="ly-panel"><div class="ly-top"><b>🎤 デモ音源</b><span>レコーディングが完了すると消えます</span></div>${d.parts.filter(x => x.demo).map(x => `<div class="ly-part" style="--c:${mem(x.writer).color}"><div class="lp-head"><span class="lp-sec">${x.time ? `<time>${esc(x.time)}〜</time>` : ''}${esc(x.label || '歌詞')}</span><span class="who" style="--c:${mem(x.writer).color}">${esc(mem(x.writer).name)}</span></div>${demoPlayer(Object.assign({}, x, { writer: '' }))}</div>`).join('')}</div>` : ''}
     ${t.kind && t.kind !== 'shift' && t.kind !== 'lyrics' && t.status === 'open' ? `<p class="wait kind-note">完了するときに<b>${t.kind === 'composition' ? '作曲シート（仮タイトル・テイスト・時間とパート）' : '歌詞（作曲シートの時間ごと）'}</b>を提出します</p>` : ''}
     ${blocker ? `<p class="wait">前のステップ「${esc(blocker.title)}」（${esc(namesOf(ids(blocker)))}）が終わるのを待っています</p>` : ''}
     ${t.content ? `<div class="d-content">${linkify(t.content)}</div>` : ''}
