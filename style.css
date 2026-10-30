@@ -983,3 +983,8 @@ html.lenis,html.lenis body{height:auto}
 .lp-demo .dm-b{width:34px;height:28px;padding:0;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:#fff;font-size:12px;line-height:1}
 .lp-demo .dm-play{width:40px;border-color:var(--c)}
 .lp-demo .dm-t{font-variant-numeric:tabular-nums;min-width:32px}
+/* 保留（日程未定） */
+.hold-box{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;display:grid;gap:8px}
+.hold-box.on{border-color:#ffb052;background:color-mix(in oklab,#ffb052 8%,transparent)}
+.hold-box p{margin:0;font-size:13px;line-height:1.5} .hold-box b{color:#ffb052}
+.hold-btns{display:flex;gap:8px;flex-wrap:wrap} .hold-btns .btn{width:auto;margin:0}

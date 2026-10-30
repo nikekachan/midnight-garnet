@@ -63,8 +63,10 @@ const ids = t => splitIds(t.assignee);
 const isMine = t => !!S.me && ids(t).includes(S.me.id);
 const isAdminMode = () => !!S.adminToken;
 const canAct = t => isMine(t) || isAdminMode();
-const isOverdue = t => t.status === 'open' && t.deadline < today();
+const isOverdue = t => t.status === 'open' && !t.hold && t.deadline < today();
+const isRec = t => String(t.title || '').includes('レコーディング');
 const dueText = t => {
+  if (t.hold && t.status === 'open') return '⏸ 保留（日程未定）';
   const d = daysLeft(t.deadline);
   return d < 0 ? `${-d}日遅れ` : d === 0 ? '今日まで' : d === 1 ? '明日まで' : `あと${d}日`;
 };
@@ -843,7 +845,7 @@ function viewMonth() {
   const startPad = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 月曜はじまり
   const days = new Date(y, m, 0).getDate();
   const byDay = {};
-  S.tasks.forEach(t => { if (!S.calMine || isMine(t)) (byDay[t.deadline] = byDay[t.deadline] || []).push(t); });
+  S.tasks.forEach(t => { if (t.hold && t.status === 'open') return; if (!S.calMine || isMine(t)) (byDay[t.deadline] = byDay[t.deadline] || []).push(t); });
 
   let cells = '';
   for (let i = 0; i < startPad; i++) cells += '<div class="cell pad"></div>';
@@ -1127,7 +1129,7 @@ function currentLine(steps) {
     return steps.every(s => s.status !== 'open') ? '<span class="lbl">ALL DONE</span> すべてのステップが終わりました 💫' : '';
   }
   const n = steps.indexOf(cur) + 1;
-  return `<span class="lbl">NOW · STEP ${n}/${steps.length}</span><b>${esc(cur.title)}</b>${whoChips(ids(cur))}<span class="${isOverdue(cur) ? 'due late' : 'due'}">${md(cur.deadline)}・${dueText(cur)}</span>`;
+  return `<span class="lbl">NOW · STEP ${n}/${steps.length}</span><b>${esc(cur.title)}</b>${whoChips(ids(cur))}<span class="${isOverdue(cur) ? 'due late' : 'due'}">${cur.hold ? dueText(cur) : `${md(cur.deadline)}・${dueText(cur)}`}</span>`;
 }
 function diamonds(steps) {
   return `<div class="diamonds">${steps.map(s => {
@@ -1352,7 +1354,7 @@ function stepTimeline(steps) {
       <div class="node"><span><i>${icon}</i></span></div>
       <button class="step-body" data-act="open" data-id="${esc(s.id)}">
         <div class="step-top"><b>${esc(s.title)}</b>${statusBadge(st)}</div>
-        <div class="step-meta">${whoChips(ids(s))}<span class="${isOverdue(s) ? 'late' : ''}">${md(s.deadline)}${s.status === 'open' ? '・' + dueText(s) : ''}</span>${s.status === 'open' ? `<span>${p}%</span>` : ''}</div>
+        <div class="step-meta">${whoChips(ids(s))}<span class="${isOverdue(s) ? 'late' : ''}">${s.hold && s.status === 'open' ? dueText(s) : md(s.deadline) + (s.status === 'open' ? '・' + dueText(s) : '')}</span>${s.status === 'open' ? `<span>${p}%</span>` : ''}</div>
         ${s.status === 'open' && p ? `<div class="bar"><i style="width:${p}%"></i></div>` : ''}
       </button>
       <div class="step-move">
@@ -1477,9 +1479,14 @@ function renderDetail(toBottom) {
       <dl>
         <div><dt>担当</dt><dd>${whoChips(list)}</dd></div>
         <div><dt>依頼</dt><dd><span class="who" style="--c:${c.color}">${esc(c.name)}</span></dd></div>
-        <div><dt>納期</dt><dd class="${late ? 'late-t' : ''}">${md(t.deadline)}${t.status === 'open' ? `<small>${dueText(t)}</small>` : ''}</dd></div>
+        <div><dt>納期</dt><dd class="${late ? 'late-t' : ''}">${t.hold && t.status === 'open' ? '<b>未定</b>' : md(t.deadline)}${t.status === 'open' ? `<small>${dueText(t)}</small>` : ''}</dd></div>
       </dl>
     </div>
+    ${t.status === 'open' && (t.hold || isRec(t)) && canAct(t) ? `<div class="hold-box ${t.hold ? 'on' : ''}">
+      ${t.hold ? `<p><b>⏸ 保留中</b>　${isRec(t) ? 'レコーディングの日程' : '日程'}が決まったら、ここから決めてください。後ろのステップの納期も同じ日数だけずれます。</p>` : ''}
+      <div class="hold-btns"><button class="btn gem sm" data-act="form" data-form="recDate" data-id="${esc(t.id)}">📅 ${t.hold ? '日程を決める' : '日程を変える'}</button>
+      ${t.hold ? '' : `<button class="btn ghost sm" data-act="holdTask" data-id="${esc(t.id)}">⏸ 保留にする</button>`}</div>
+    </div>` : ''}
     ${t.kind === 'lyrics' && t.status === 'open' ? lyricPanel(t, d.parts) : ''}
     ${t.kind === 'lyrics' && t.status !== 'open' && (d.parts || []).some(x => x.demo) ? `<div class="ly-panel"><div class="ly-top"><b>🎤 デモ音源</b><span>レコーディングが完了すると消えます</span></div>${d.parts.filter(x => x.demo).map(x => `<div class="ly-part" style="--c:${mem(x.writer).color}"><div class="lp-head"><span class="lp-sec">${x.time ? `<time>${esc(x.time)}〜</time>` : ''}${esc(x.label || '歌詞')}</span><span class="who" style="--c:${mem(x.writer).color}">${esc(mem(x.writer).name)}</span></div>${demoPlayer(Object.assign({}, x, { writer: '' }))}</div>`).join('')}</div>` : ''}
     ${t.kind && t.kind !== 'shift' && t.kind !== 'lyrics' && t.status === 'open' ? `<p class="wait kind-note">完了するときに<b>${t.kind === 'composition' ? '作曲シート（仮タイトル・テイスト・時間とパート）' : '歌詞（作曲シートの時間ごと）'}</b>を提出します</p>` : ''}
@@ -1839,18 +1846,12 @@ const FORMS = {
   },
   avail(_, o = {}) {
     const date = o.date || S.day;
-    S.editSlots = availRow(S.me.id, date).split('');
+    S.editSlots = availRow(S.me.id, date).split('').map(c => c === '1' ? '1' : '0'); // ◯だけを選ぶ（✕はなし）
     return `<form data-form="avail" data-date="${esc(date)}">${sheetHead('空き時間を入力')}
-      <p class="hint" style="margin:-6px 0 10px"><b style="color:var(--text)">${md(date)}</b>　指でなぞると、まとめて塗れます。シフトの時間は自動で「集まれない」になります。</p>
-      <div class="seg paint">
-        <label class="seg-i"><input type="radio" name="pm" value="1" checked><span class="pm-ok">◯ 集まれる</span></label>
-        <label class="seg-i"><input type="radio" name="pm" value="2"><span class="pm-ng">✕ 集まれない</span></label>
-        <label class="seg-i"><input type="radio" name="pm" value="0"><span>消す</span></label>
-      </div>
+      <p class="hint" style="margin:-6px 0 10px"><b style="color:var(--text)">${md(date)}</b>　<b style="color:var(--text)">集まれる時間だけ</b>をタップ・なぞって選んでください。選んでいない時間は「集まれない」になります。選んだところをもう一度なぞると外れます。</p>
       <div class="quick">
         <button type="button" data-act="quickFill" data-v="1" data-a="34" data-b="48">夕方以降◯</button>
         <button type="button" data-act="quickFill" data-v="1" data-a="${SLOT0}" data-b="48">終日◯</button>
-        <button type="button" data-act="quickFill" data-v="2" data-a="${SLOT0}" data-b="48">終日✕</button>
         <button type="button" data-act="quickFill" data-v="0" data-a="0" data-b="48">クリア</button>
       </div>
       <div class="agrid" id="agrid">${availRows(date)}</div>
@@ -1861,19 +1862,13 @@ const FORMS = {
     const days = weekDays(o.date || S.day);
     if (!S.weekEdit || !o.keep) S.weekEdit = { slots: {} };
     S.weekEdit.start = days[0];
-    days.forEach(d => { if (!S.weekEdit.slots[d]) S.weekEdit.slots[d] = availRow(S.me.id, d).split(''); });
-    const pm = o.pm || '1';
+    days.forEach(d => { if (!S.weekEdit.slots[d]) S.weekEdit.slots[d] = availRow(S.me.id, d).split('').map(c => c === '1' ? '1' : '0'); });
     return `<form data-form="availWeek">${sheetHead('空き時間を入力（1週間）')}
-      <p class="hint" style="margin:-6px 0 10px">指でなぞると、まとめて塗れます。日付を押すと、その日を丸ごと塗れます。シフトの時間は自動で「集まれない」になります。</p>
+      <p class="hint" style="margin:-6px 0 10px"><b style="color:var(--text)">集まれる時間だけ</b>をタップ・なぞって選んでください。選んでいない時間は「集まれない」になります。選んだところをもう一度なぞると外れます。日付を押すと、その日を丸ごと選ぶ／外すができます。</p>
       <div class="date-nav wk-nav">
         <button type="button" class="icon-btn" data-act="weekNav" data-d="-7" aria-label="前の週">‹</button>
         <h2>${mdShort(days[0])} 〜 ${mdShort(days[6])}</h2>
         <button type="button" class="icon-btn" data-act="weekNav" data-d="7" aria-label="次の週">›</button>
-      </div>
-      <div class="seg paint">
-        <label class="seg-i"><input type="radio" name="pm" value="1" ${pm === '1' ? 'checked' : ''}><span class="pm-ok">◯ 集まれる</span></label>
-        <label class="seg-i"><input type="radio" name="pm" value="2" ${pm === '2' ? 'checked' : ''}><span class="pm-ng">✕ 集まれない</span></label>
-        <label class="seg-i"><input type="radio" name="pm" value="0" ${pm === '0' ? 'checked' : ''}><span>消す</span></label>
       </div>
       <div class="quick">
         <button type="button" data-act="weekQuick" data-v="1" data-a="34" data-b="48">毎日 夕方以降◯</button>
@@ -1992,6 +1987,16 @@ const FORMS = {
         <label>表示名（空ならサービス名）<input name="label" maxlength="30" placeholder="例：MV チャンネル"></label>
         <button class="btn gem" type="submit">追加する</button>
       </form>`;
+  },
+  recDate(_, o = {}) {
+    const t = S.tasks.find(x => x.id === o.id); if (!t) return '';
+    return `<form data-form="recDate" data-id="${esc(t.id)}">${sheetHead('📅 ' + (isRec(t) ? 'レコーディング' : t.title) + 'の日程')}
+      <p class="hint" style="margin:-6px 0 12px">決めた日がこのステップの納期になり、後ろのステップ（ミックスなど）の納期も同じ日数だけずれます。時間を入れると、カレンダーにも予定が入ります。</p>
+      <label>日付<input type="date" name="date" required value="${esc(t.hold ? '' : t.deadline)}"></label>
+      <div class="two"><label>開始（任意）<input type="time" name="start" step="300"></label><label>終了（任意）<input type="time" name="end" step="300"></label></div>
+      <label>場所（任意）<input name="place" maxlength="80" placeholder="例：スタジオ"></label>
+      <button class="btn gem" type="submit">決定して3人に知らせる</button>
+    </form>`;
   },
   goal() {
     const k = S.members.findIndex(m => m.id === S.me.id), g = S.goals.find(x => x.k === k) || {};
@@ -2261,6 +2266,14 @@ async function handleForm(kind, f, btn) {
       refreshAll(); toast('返信しました 💬');
       return;
     }
+    if (kind === 'recDate') {
+      if (v('start') && !v('end') || !v('start') && v('end')) { toast('時間は開始と終了の両方を入れてください', 'err'); return; }
+      const r = await api('setRecordingDate', { id: f.dataset.id, date: v('date'), start: v('start'), end: v('end'), place: v('place') });
+      if (r.task) upsertTask(r.task);
+      try { applyBoot(await api('bootstrap')); } catch (e) {}
+      closeSheet(); refreshAll(); refreshDetail(); toast('日程を決めました 🎤'); FX.confetti();
+      return;
+    }
     if (kind === 'goal') {
       const k = S.members.findIndex(m => m.id === S.me.id);
       await api('saveMandala', { cells: { ['g' + k]: { text: v('text') } } });
@@ -2369,13 +2382,19 @@ function refreshAgrid() {
   const f = $('#sheet form[data-form=avail]'); if (!f) return;
   $('#agrid').innerHTML = availRows(f.dataset.date);
 }
-let painting = false;
+let painting = false, paintMode = '1';
+/** なぞり始めたマスが◯なら「外す」、空なら「選ぶ」で、そのままなぞった範囲を塗る */
+function paintStart(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const wc = el && el.closest('#wgrid .wc'), row = el && el.closest('#agrid .ar');
+  const cur = wc ? S.weekEdit.slots[wc.dataset.date][Number(wc.dataset.i)] : row ? S.editSlots[Number(row.dataset.i)] : '0';
+  paintMode = cur === '1' ? '0' : '1';
+}
 function paintAt(x, y) {
   const el = document.elementFromPoint(x, y);
   const wc = el && el.closest('#wgrid .wc');
   if (wc) {
-    const f = $('#sheet form[data-form=availWeek]');
-    const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
+    const pm = paintMode;
     const arr = S.weekEdit.slots[wc.dataset.date], i = Number(wc.dataset.i);
     if (wc.classList.contains('s-shift') || wc.classList.contains('s-busy') || arr[i] === pm) return;
     arr[i] = pm;
@@ -2385,8 +2404,7 @@ function paintAt(x, y) {
   const row = el && el.closest('#agrid .ar');
   if (!row) return;
   const i = Number(row.dataset.i);
-  const f = $('#sheet form[data-form=avail]');
-  const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
+  const pm = paintMode;
   const cell = $('.ac', row);
   if (cell.classList.contains('s-shift') || S.editSlots[i] === pm) return;
   S.editSlots[i] = pm;
@@ -2394,7 +2412,7 @@ function paintAt(x, y) {
 }
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest('#agrid') && !e.target.closest('#wgrid .wc')) return;
-  painting = true; e.preventDefault(); paintAt(e.clientX, e.clientY);
+  painting = true; e.preventDefault(); paintStart(e.clientX, e.clientY); paintAt(e.clientX, e.clientY);
 });
 document.addEventListener('pointermove', e => { if (painting) paintAt(e.clientX, e.clientY); });
 ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, () => { painting = false; }));
@@ -3408,6 +3426,7 @@ document.addEventListener('click', e => {
     case 'calMode': S.calMode = el.dataset.m; render(); break;
     case 'boardMode': S.boardMode = el.dataset.m; render(); break;
     case 'attach': pickAttach(el); break;
+    case 'holdTask': (async () => { try { const r = await api('holdTask', { id: el.dataset.id, hold: true }); if (r.task) upsertTask(r.task); refreshAll(); refreshDetail(); toast('保留にしました ⏸'); } catch (e) { toast(e.message, 'err'); } })(); break;
     case 'propVote': propVote(el); break;
     case 'gearPay': gearPayAct(el); break;
     case 'gearReceipt': gearReceipt(el); break;
@@ -3421,9 +3440,9 @@ document.addEventListener('click', e => {
       rerenderWeek(); break;
     }
     case 'weekFillDay': {
-      const f = $('#sheet form[data-form=availWeek]');
-      const pm = (f.querySelector('input[name=pm]:checked') || {}).value || '1';
-      for (let i = SLOT0; i < 48; i++) S.weekEdit.slots[el.dataset.date][i] = pm;
+      const arr = S.weekEdit.slots[el.dataset.date];
+      const pm = arr.slice(SLOT0).every(c => c === '1') ? '0' : '1'; // 全部選んであれば外す
+      for (let i = SLOT0; i < 48; i++) arr[i] = pm;
       rerenderWeek(); break;
     }
     case 'calMine': S.calMine = !S.calMine; store.set('mg_calMine', S.calMine ? '1' : '0'); render(); break;
