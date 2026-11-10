@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+ <radialGradient id="bg" cx="30%" cy="22%" r="95%"><stop offset="0" stop-color="#e8395f"/><stop offset=".55" stop-color="#a3173b"/><stop offset="1" stop-color="#4a0717"/></radialGradient>
+ <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff7d9a" stop-opacity=".45"/><stop offset="1" stop-color="#ff7d9a" stop-opacity="0"/></radialGradient>
+ <linearGradient id="cap" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4f6"/><stop offset="1" stop-color="#ff9db2"/></linearGradient>
+ <linearGradient id="arm" gradientUnits="userSpaceOnUse" x1="0" y1="76" x2="0" y2="352"><stop offset="0" stop-color="#ffe6ec"/><stop offset="1" stop-color="#ffb3c4"/></linearGradient>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<g transform="translate(256 256) scale(1.0) translate(-256 -256)">
+  <ellipse cx="256" cy="214" rx="150" ry="150" fill="url(#glow)"/>
+  <path d="M358.6 121.7 A138 138 0 1 0 394 214" fill="none" stroke="url(#arm)" stroke-width="30" stroke-linecap="round"/>
+  <path d="M394 214 H322" fill="none" stroke="url(#arm)" stroke-width="30" stroke-linecap="round"/>
+  <rect x="210" y="128" width="92" height="166" rx="46" fill="url(#cap)"/>
+  <rect x="210" y="128" width="92" height="166" rx="46" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="3"/>
+  <path d="M232 250 V176 L256 210 L280 176 V250" fill="none" stroke="#7d0f2a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 368 V418" stroke="#ffd2dc" stroke-width="26" stroke-linecap="round"/>
+  <path d="M200 428 H312" stroke="#ffd2dc" stroke-width="26" stroke-linecap="round"/>
+</g>
+</svg>
