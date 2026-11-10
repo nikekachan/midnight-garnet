@@ -1509,19 +1509,31 @@ function renderDetail(toBottom) {
 
 // ---------- 歌詞：区切りごとの担当・確認 ----------
 const LY_ST = { '': ['未入力', 'u'], review: ['確認待ち', 'w'], revise: ['修正のお願い', 'r'], ok: ['全員OK', 'ok'], skip: ['歌詞なし', 's'] };
+const LY_ALL_REVIEW = ['mitsu']; // この人が書いた歌詞は、ほかの全員がチェックする
 function lyricPanel(t, parts) {
   if (!parts) return '<div id="lyPanel" class="ly-panel"><div class="lt-load" data-lottie="lottie/loader.json"></div></div>';
   const live = parts.filter(x => x.status !== 'skip');
   const ok = live.filter(x => x.status === 'ok').length;
-  // 確認する人：今の歌詞を書いた人以外の全員（いつも2人）。作曲者は担当じゃない区切りも直せる
+  // 確認する人：みつが書いたら他の全員。かつにい・けんぼーが書いたら本人が選んだ人だけ。作曲者は担当じゃない区切りも直せる
   const by = x => x.textBy || x.writer;
-  const reviewersFor = x => S.members.filter(m => m.id !== by(x));
+  const reviewersFor = x => {
+    const others = S.members.filter(m => m.id !== by(x));
+    if (LY_ALL_REVIEW.includes(by(x))) return others;
+    const sel = others.filter(m => splitIds(x.reviewers).includes(m.id));
+    return sel.length ? sel : others;
+  };
+  const pickFor = x => {
+    if (LY_ALL_REVIEW.includes(S.me.id)) return '<p class="muted small lp-pick">👀 みつの歌詞は、ほかの全員がチェックします</p>';
+    const others = S.members.filter(m => m.id !== S.me.id);
+    const cur = by(x) === S.me.id && x.reviewers ? splitIds(x.reviewers) : others.map(m => m.id);
+    return `<div class="lp-pick" data-idx="${esc(x.idx)}"><span>👀 チェックしてもらう人</span>${others.map(m => `<label class="lp-pk" style="--c:${m.color}"><input type="checkbox" value="${m.id}" ${cur.includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')}</div>`;
+  };
   const composers = [...new Set(S.tasks.filter(k => k.projectId && k.projectId === t.projectId && k.kind === 'composition').flatMap(k => splitIds(k.assignee)))];
   const iCompose = composers.includes(S.me.id);
   const mineTodo = parts.filter(x => (x.writer === S.me.id && (x.status === '' || x.status === 'revise')) || (x.status === 'review' && by(x) !== S.me.id && !splitIds(x.approvals).includes(S.me.id))).length;
   return `<div id="lyPanel" class="ly-panel">
     <div class="ly-top"><b>✍️ 歌詞の担当と確認</b><span>OK ${ok}/${live.length}</span></div>
-    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら、<b>書いた人以外の2人</b>が確認して「OK」を押します。作曲者は、担当じゃない区切りも直せます。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
+    <p class="hint" style="margin:0 0 10px">区切りごとに担当を決めて書きます。書いたら確認に出します。<b>みつの歌詞は他の全員</b>、<b>かつにい・けんぼーの歌詞は本人が選んだ人</b>が確認して「OK」を押します。作曲者は、担当じゃない区切りも直せます。全部の区切りがOKになると、自動で完了します。担当はいつでも誰でも変えられます。${mineTodo ? `<br><b style="color:var(--rose)">あなたの番：${mineTodo}件</b>` : ''}</p>
     ${parts.map(x => {
       const w = mem(x.writer), mine = x.writer === S.me.id, [stLabel, stCls] = LY_ST[x.status] || LY_ST[''];
       const ap = splitIds(x.approvals);
@@ -1537,6 +1549,7 @@ function lyricPanel(t, parts) {
           : canEdit ? `<textarea class="lp-text" data-idx="${esc(x.idx)}" rows="4" maxlength="3000" placeholder="この区切りの歌詞">${esc(x.text)}</textarea>`
           : x.text ? `<pre class="lp-view">${esc(x.text)}</pre>` : `<p class="muted small" style="margin:6px 0">${esc(w.name)}さんが書くのを待っています</p>`}
         ${x.demo ? demoPlayer(x) : ''}
+        ${canEdit && x.status !== 'skip' ? pickFor(x) : ''}
         ${x.status === 'revise' && x.note ? `<p class="lp-note">✎ 修正のお願い：${esc(x.note)}</p>` : ''}
         ${x.status !== 'skip' && x.text ? `<div class="lp-checks">${reviewers.map(m => `<span class="lp-chk ${ap.includes(m.id) ? 'on' : ''}" style="--c:${m.color}">${ap.includes(m.id) ? '✓' : '…'} ${esc(m.name)}</span>`).join('')}</div>` : ''}
         <div class="lp-btns">
@@ -1579,8 +1592,10 @@ function demoJump(u, d) {
 /** 書きかけの歌詞を消さないように、描き直しの前後で入力中の内容を戻す */
 async function lyKeep(fn) {
   const keep = $$('#lyPanel .lp-text').map(t => [t.dataset.idx, t.value]);
+  const picks = $$('#lyPanel .lp-pick[data-idx]').map(p => [p.dataset.idx, [...p.querySelectorAll('input')].map(i => [i.value, i.checked])]);
   await fn();
   keep.forEach(([i, val]) => { const t = $(`#lyPanel .lp-text[data-idx="${i}"]`); if (t) t.value = val; });
+  picks.forEach(([i, cs]) => cs.forEach(([v, c]) => { const el = $(`#lyPanel .lp-pick[data-idx="${i}"] input[value="${v}"]`); if (el) el.checked = c; }));
 }
 function pickDemo(btn) {
   const inp = document.createElement('input');
@@ -3450,7 +3465,16 @@ document.addEventListener('click', e => {
     case 'memoReact': reactMemo(el); break;
     case 'dojoWho': S.dojoWho = el.dataset.v; render(); break;
     case 'dojoKind': S.dojoKind = el.dataset.v; render(); break;
-    case 'lySave': { const ta = $(`#lyPanel .lp-text[data-idx="${el.dataset.idx}"]`); lyCall('saveLyricPart', { idx: el.dataset.idx, text: ta ? ta.value : '' }, el, '確認に出しました 👀'); break; }
+    case 'lySave': {
+        const ta = $(`#lyPanel .lp-text[data-idx="${el.dataset.idx}"]`);
+        const pk = $(`#lyPanel .lp-pick[data-idx="${el.dataset.idx}"]`);
+        const data = { idx: el.dataset.idx, text: ta ? ta.value : '' };
+        if (pk) {
+          data.reviewers = [...pk.querySelectorAll('input:checked')].map(i => i.value).join(',');
+          if (data.text.trim() && !data.reviewers) { toast('チェックしてもらう人を1人以上選んでください'); break; }
+        }
+        lyCall('saveLyricPart', data, el, '確認に出しました 👀'); break;
+      }
     case 'lyOk': lyCall('reviewLyricPart', { idx: el.dataset.idx, ok: true }, el, 'OKしました ✓'); break;
     case 'lyRevise': openSheet(`<form data-form="lyRevise" data-idx="${esc(el.dataset.idx)}">${sheetHead('修正のお願い')}<label>どこをどう直してほしいか<textarea name="note" rows="3" maxlength="500" required placeholder="例：2行目の言葉をもっと明るく"></textarea></label><button class="btn danger" type="submit">担当にお願いする</button></form>`); break;
     case 'lyDemo': pickDemo(el); break;

@@ -988,3 +988,7 @@ html.lenis,html.lenis body{height:auto}
 .hold-box.on{border-color:#ffb052;background:color-mix(in oklab,#ffb052 8%,transparent)}
 .hold-box p{margin:0;font-size:13px;line-height:1.5} .hold-box b{color:#ffb052}
 .hold-btns{display:flex;gap:8px;flex-wrap:wrap} .hold-btns .btn{width:auto;margin:0}
+.lp-pick{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:8px;font-size:12px;color:var(--muted)}
+.lp-pk{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:99px;border:1px solid var(--line);cursor:pointer}
+.lp-pk:has(input:checked){border-color:var(--c);color:var(--c);font-weight:700}
+.lp-pk input{accent-color:var(--c);margin:0;width:auto}
