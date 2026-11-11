@@ -188,6 +188,7 @@ header h1 small{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
   <h2><span class="dot" id="tsDot" style="width:10px;height:10px;border-radius:50%"></span><input type="text" id="tsName" style="flex:1;font-size:15px"><button class="close" data-close>閉じる</button></h2>
   <div class="field"><span>音量</span><input type="range" id="tsVol" min="0" max="1.5" step="0.01"><span class="v" id="tsVolV"></span></div>
   <div class="field"><span>左右</span><input type="range" id="tsPan" min="-1" max="1" step="0.01"><span class="v" id="tsPanV"></span></div>
+  <div class="field"><span>録音ゲイン</span><input type="range" id="tsGain" min="0" max="15" step="0.5"><span class="v" id="tsGainV"></span></div>
   <div class="btnrow">
     <button id="tsImport">🎵 このトラックに音源を追加</button>
     <button id="tsClear">🗑 トラックを空にする</button>
@@ -204,6 +205,7 @@ header h1 small{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
   <h3>オートチューン</h3>
   <div class="toggle"><span>オン</span><label class="sw"><input type="checkbox" id="atOn"><span></span></label></div>
   <div class="field"><span>キー</span><select id="atKey"></select><span></span></div>
+  <div class="btnrow"><button id="detectBtn">🔍 キーを自動検出</button><span class="note" id="detectNote" style="align-self:center"></span></div>
   <div class="field"><span>スケール</span><select id="atScale"><option value="major">メジャー</option><option value="minor">マイナー</option><option value="chromatic">クロマチック（全音）</option></select><span></span></div>
   <div class="field"><span>かかり方</span><input type="range" id="atSpeed" min="0" max="200" step="5"><span class="v" id="atSpeedV"></span></div>
   <div class="field"><span>強さ</span><input type="range" id="atAmt" min="0" max="100" step="5"><span class="v" id="atAmtV"></span></div>
@@ -269,7 +271,7 @@ const SR = () => ctx.sampleRate;
 
 function newTrack(i){
   return { name:DEFAULT_NAMES[i], color:COLORS[i], vol:0.85, pan:0, mute:false, solo:false,
-    eq:{hp:i!==0, low:0, mid:0, midF:0.5, high:0}, at:{on:false, key:0, scale:'major', speed:30, amt:100},
+    eq:{hp:i!==0, low:0, mid:0, midF:0.5, high:0}, at:{on:false, key:0, scale:'major', speed:0, amt:100}, recGain:5,
     clips:[], node:null, busy:false };
 }
 function newProjObj(name){ return {id:uid(), name:name||'新しい曲', bpm:120, beats:4, gridOff:0}; }
@@ -291,7 +293,7 @@ function saveProj(){
   saveT=setTimeout(async()=>{
     try{
       await DB.put('pm:'+p.id, { proj:{...p}, view:{armed:state.armed,pps:state.pps,viewStart:state.viewStart,playhead:state.playhead},
-        tracks: tracks.map(t=>({name:t.name,vol:t.vol,pan:t.pan,mute:t.mute,solo:t.solo,eq:{...t.eq},at:{...t.at},
+        tracks: tracks.map(t=>({name:t.name,vol:t.vol,pan:t.pan,mute:t.mute,solo:t.solo,recGain:t.recGain,atV2:true,eq:{...t.eq},at:{...t.at},
           clips:t.clips.map(c=>({id:c.id,sid:c.src.id,pos:c.pos,inOff:c.inOff,len:c.len}))})) });
       const e=projects.find(x=>x.id===p.id); if(e){ e.name=p.name; e.updated=Date.now(); } else projects.push({id:p.id,name:p.name,updated:Date.now()});
       await DB.put('projects', projects);
@@ -299,7 +301,7 @@ function saveProj(){
   },400);
 }
 async function saveSource(src){
-  try{ await DB.put('ps:'+proj.id+':'+src.id, {raw:src.raw, tuned:src.tuned, tunedKey:src.tunedKey, sr:SR()}); }
+  try{ await DB.put('ps:'+proj.id+':'+src.id, {raw:src.raw, tuned:src.tuned, tunedKey:src.tunedKey, rec:src.rec, sr:SR()}); }
   catch(e){ toast('保存に失敗（容量不足かも）',3000); }
 }
 async function resampleChans(chs, from, to){
@@ -332,18 +334,19 @@ async function loadProject(id){
   sources=new Map(); undoStack=[]; sel=null; updUndo();
   for(let i=0;i<N_TRACKS;i++){
     const node=tracks[i]&&tracks[i].node; const t=newTrack(i); t.node=node; const mt=(m.tracks||[])[i];
-    if(mt){ Object.assign(t,{name:mt.name,vol:mt.vol,pan:mt.pan,mute:mt.mute,solo:mt.solo}); Object.assign(t.eq,mt.eq||{}); Object.assign(t.at,mt.at||{});
+    if(mt){ Object.assign(t,{name:mt.name,vol:mt.vol,pan:mt.pan,mute:mt.mute,solo:mt.solo,recGain:mt.recGain??5}); Object.assign(t.eq,mt.eq||{}); Object.assign(t.at,mt.at||{}); if(!mt.atV2){ if(t.at.speed===30) t.at.speed=0; }
       for(const c of (mt.clips||[])){
         let src=sources.get(c.sid);
         if(!src){ const r=await DB.get('ps:'+id+':'+c.sid); if(!r) continue;
           let raw=r.raw, tuned=r.tuned, tk=r.tunedKey;
           if(r.sr && r.sr!==SR()){ raw=await resampleChans(raw,r.sr,SR()); tuned=null; tk=null; }
-          src={id:c.sid, raw, tuned, tunedKey:tk, _c:{}}; sources.set(c.sid,src); }
+          src={id:c.sid, raw, tuned, tunedKey:tk, rec: r.rec!=null ? r.rec : raw.length===1, _c:{}}; sources.set(c.sid,src); }
         t.clips.push({id:c.id, src, pos:c.pos, inOff:Math.min(c.inOff, src.raw[0].length-1), len:Math.min(c.len, src.raw[0].length-c.inOff)});
       }
     }
     tracks[i]=t; if(t.node) applyParams(t.node,t,false);
   }
+  if(proj.key) tracks.forEach(t=>{ if(!(m.tracks||[]).length){ t.at.key=proj.key.key; t.at.scale=proj.key.scale; } });
   const v=m.view||{}; state.armed=v.armed??1; state.pps=v.pps||40; state.viewStart=v.viewStart||0; state.playhead=v.playhead||0;
   state.lastProject=id; saveSettings();
   // 使われていない音声データを掃除
@@ -362,7 +365,7 @@ async function createProject(name){
 async function duplicateProject(){
   if(!proj) return; await flushSave();
   const m=await DB.get('pm:'+proj.id); const np={...m.proj, id:uid(), name:m.proj.name+' のコピー'};
-  for(const [sid,src] of sources) await DB.put('ps:'+np.id+':'+sid,{raw:src.raw,tuned:src.tuned,tunedKey:src.tunedKey,sr:SR()});
+  for(const [sid,src] of sources) await DB.put('ps:'+np.id+':'+sid,{raw:src.raw,tuned:src.tuned,tunedKey:src.tunedKey,rec:src.rec,sr:SR()});
   await DB.put('pm:'+np.id,{...m, proj:np});
   projects.push({id:np.id,name:np.name,updated:Date.now()}); await DB.put('projects',projects);
   await loadProject(np.id); toast('複製しました');
@@ -375,7 +378,7 @@ async function deleteProject(id){
 async function flushSave(){ clearTimeout(saveT); saveT=null;
   const p=proj; if(!p) return;
   const e=projects.find(x=>x.id===p.id); if(e){ e.name=p.name; e.updated=Date.now(); } else projects.push({id:p.id,name:p.name,updated:Date.now()}); await DB.put('projects',projects); await DB.put('pm:'+p.id,{ proj:{...p}, view:{armed:state.armed,pps:state.pps,viewStart:state.viewStart,playhead:state.playhead},
-    tracks:tracks.map(t=>({name:t.name,vol:t.vol,pan:t.pan,mute:t.mute,solo:t.solo,eq:{...t.eq},at:{...t.at},clips:t.clips.map(c=>({id:c.id,sid:c.src.id,pos:c.pos,inOff:c.inOff,len:c.len}))})) }); }
+    tracks:tracks.map(t=>({name:t.name,vol:t.vol,pan:t.pan,mute:t.mute,solo:t.solo,recGain:t.recGain,atV2:true,eq:{...t.eq},at:{...t.at},clips:t.clips.map(c=>({id:c.id,sid:c.src.id,pos:c.pos,inOff:c.inOff,len:c.len}))})) }); }
 
 /* ====================== オーディオ初期化 ====================== */
 const WORKLET = `
@@ -475,7 +478,7 @@ function srcPeaks(t,src){
   for(const c of d){ for(let j=0;j<n;j++){ let m=p[j]; const e=Math.min(c.length,(j+1)*PEAK); for(let s=j*PEAK;s<e;s++){ const v=c[s]<0?-c[s]:c[s]; if(v>m) m=v; } p[j]=m; } }
   return src._c[k]=p;
 }
-function newSource(raw){ const s={id:uid(), raw, tuned:null, tunedKey:null, _c:{}}; sources.set(s.id,s); saveSource(s); return s; }
+function newSource(raw,rec){ const s={id:uid(), raw, tuned:null, tunedKey:null, rec:!!rec, _c:{}}; sources.set(s.id,s); saveSource(s); return s; }
 const cEnd = c => c.pos + c.len/SR();
 function projectEnd(){ let e=0; tracks.forEach(t=>t.clips.forEach(c=>e=Math.max(e,cEnd(c)))); return e; }
 function trackOf(c){ return tracks.findIndex(t=>t.clips.includes(c)); }
@@ -504,12 +507,14 @@ function doUndo(){
 function changed(){ saveProj(); updEditBar(); draw(); if(playing&&!recording) startPlayback(curPos(),ctx.currentTime+0.03); }
 
 /* ====================== 再生 ====================== */
+const dbl = db => Math.pow(10,db/20);
+const clipGain = (t,c) => c.src.rec ? dbl(t.recGain||0) : 1;
 function schedClip(ac, t, c, from, when, dest){
   const sr=ac.sampleRate, dur=c.len/sr; if(from>=c.pos+dur) return null;
   const delay=Math.max(0,c.pos-from), off=Math.max(0,from-c.pos), pd=dur-off; if(pd<0.01) return null;
   const s=ac.createBufferSource(); s.buffer=srcBuf(t,c.src);
   const g=ac.createGain(); const t0=when+delay, F=Math.min(0.004,pd/3);
-  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(1,t0+F); g.gain.setValueAtTime(1,t0+pd-F); g.gain.linearRampToValueAtTime(0,t0+pd);
+  const G=clipGain(t,c); g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(G,t0+F); g.gain.setValueAtTime(G,t0+pd-F); g.gain.linearRampToValueAtTime(0,t0+pd);
   s.connect(g); g.connect(dest); s.start(t0, c.inOff/sr+off, pd); return s;
 }
 function startPlayback(from, when){
@@ -575,7 +580,7 @@ async function stopRec(){
   if(ei-si<sr*0.2){ toast('録音が短すぎました'); setUI(); draw(); return; }
   const piece=data.slice(si,ei), startPos=recStartPos+si/sr;
   pushUndo('録音');
-  const t=tracks[tk.i]; const src=newSource([piece]);
+  const t=tracks[tk.i]; const src=newSource([piece],true);
   carve(t,startPos,startPos+piece.length/sr);
   const c={id:uid(),src,pos:startPos,inOff:0,len:piece.length}; t.clips.push(c);
   state.playhead=tk.punch; saveProj(); setUI(); draw();
@@ -645,6 +650,75 @@ async function runAutotune(i){
     if(!cancel()){ t.busy=false; if(cur===i) $('#atProg').style.display='none'; updAtUI(); draw(); }
   }
 }
+
+/* ====================== キー（スケール）自動検出 ====================== */
+function fftMag(re){ // 実数入力 → 振幅（長さ n/2）
+  const n=re.length, im=new Float64Array(n);
+  for(let i=1,j=0;i<n;i++){ let b=n>>1; for(;j&b;b>>=1) j^=b; j^=b; if(i<j){ const t=re[i]; re[i]=re[j]; re[j]=t; } }
+  for(let len=2;len<=n;len<<=1){ const a=-2*Math.PI/len, wr=Math.cos(a), wi=Math.sin(a);
+    for(let i=0;i<n;i+=len){ let cr=1, ci=0; for(let k=0;k<len/2;k++){ const u=i+k, v=u+len/2; const xr=re[v]*cr-im[v]*ci, xi=re[v]*ci+im[v]*cr; re[v]=re[u]-xr; im[v]=im[u]-xi; re[u]+=xr; im[u]+=xi; const t=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=t; } } }
+  const m=new Float64Array(n/2); for(let i=0;i<n/2;i++) m[i]=Math.hypot(re[i],im[i]); return m;
+}
+/* 1本の音から12音のクロマを作る */
+async function chromaOf(chs, from, len, sr){
+  const D=Math.max(1,Math.round(sr/11025)), dsr=sr/D, N=4096, M=Math.floor(len/D);
+  if(M<N) return null;
+  const maxFrames=240, hop=Math.max(N/2, Math.floor((M-N)/maxFrames));
+  const win=new Float64Array(N); for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+  const lo=Math.ceil(70*N/dsr), hi=Math.floor(2000*N/dsr), pc=new Int8Array(hi+1);
+  for(let b=lo;b<=hi;b++){ const midi=69+12*Math.log2(b*dsr/N/440); pc[b]=((Math.round(midi)%12)+12)%12; }
+  const chroma=new Float64Array(12); let cnt=0;
+  for(let o=0;o+N<=M;o+=hop){
+    const re=new Float64Array(N); let e=0;
+    for(let i=0;i<N;i++){ let v=0; const base=from+(o+i)*D; for(const c of chs){ for(let k=0;k<D;k++) v+=c[base+k]||0; } v/=D*chs.length; re[i]=v*win[i]; e+=v*v; }
+    if(e/N<1e-6) continue; // 無音はとばす
+    const m=fftMag(re); const f=new Float64Array(12); let tot=0;
+    for(let b=lo;b<=hi;b++){ const v=Math.sqrt(m[b]); f[pc[b]]+=v; tot+=v; }
+    if(tot>0) for(let k=0;k<12;k++) chroma[k]+=f[k]/tot;
+    if(++cnt%20===0) await sleep(0);
+  }
+  if(!cnt) return null; let sum=0; chroma.forEach(v=>sum+=v); return chroma.map(v=>v/sum);
+}
+const KS_MAJ=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88], KS_MIN=[6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+function corr(a,b){ const ma=a.reduce((x,y)=>x+y)/12, mb=b.reduce((x,y)=>x+y)/12; let n=0,da=0,db=0; for(let i=0;i<12;i++){ n+=(a[i]-ma)*(b[i]-mb); da+=(a[i]-ma)**2; db+=(b[i]-mb)**2; } return n/Math.sqrt(da*db||1); }
+function keyFromChroma(ch){
+  const res=[];
+  for(let k=0;k<12;k++){ const rot=i=>ch[(i+k)%12]; const r=Array.from({length:12},(_,i)=>rot(i));
+    res.push({key:k,scale:'major',r:corr(r,KS_MAJ)}); res.push({key:k,scale:'minor',r:corr(r,KS_MIN)}); }
+  res.sort((a,b)=>b.r-a.r); return res;
+}
+async function detectKey(){
+  const sr=SR(), parts=[];
+  for(const t of tracks){ if(!audible(t)) continue; for(const c of t.clips){ parts.push({t,c}); } }
+  if(!parts.length) return null;
+  const total=new Float64Array(12); let used=0;
+  for(const {c} of parts){
+    const ch=await chromaOf(c.src.raw, c.inOff, c.len, sr); if(!ch) continue;
+    const w=Math.min(60, c.len/sr); for(let k=0;k<12;k++) total[k]+=ch[k]*w; used+=w;
+  }
+  if(used<2) return null;
+  return keyFromChroma(Array.from(total));
+}
+$('#detectBtn').onclick=async()=>{
+  if(cur<0) return; const i=cur, b=$('#detectBtn'), nt=$('#detectNote');
+  if(!tracks.some(t=>t.clips.length)){ nt.textContent='先にオケか歌を入れてください'; return; }
+  b.disabled=true; nt.textContent='解析中…';
+  try{
+    const r=await detectKey(); if(!r){ nt.textContent='音が短すぎて判定できませんでした'; return; }
+    const best=r[0], name=KEYS[best.key]+(best.scale==='major'?' メジャー':' マイナー');
+    const rel = best.scale==='major' ? KEYS[(best.key+9)%12]+' マイナー' : KEYS[(best.key+3)%12]+' メジャー';
+    const sure = best.r>0.75 ? '' : best.r>0.55 ? '（たぶん）' : '（自信なし）';
+    // キーは曲全体で共通なので、オートチューンを使う全トラックにまとめて設定
+    const targets=tracks.map((t,k)=>k).filter(k=>k===i || tracks[k].at.on);
+    targets.forEach(k=>{ const t=tracks[k]; t.at.key=best.key; t.at.scale=best.scale; if(t.at.on) scheduleAutotune(k); });
+    proj.key={key:best.key, scale:best.scale}; saveProj();
+    $('#atKey').value=best.key; $('#atScale').value=best.scale; updTrackLabels();
+    nt.textContent='→ '+name+sure;
+    toast(name+sure+' にしました（'+rel+'と同じ音階）'+(targets.length>1?'・'+targets.length+'トラックに反映':''),3800);
+  }catch(e){ console.warn(e); nt.textContent='解析に失敗しました'; }
+  finally{ b.disabled=false; }
+};
+
 /* YINでピッチ検出 → 目標音へのズレを計算 → PSOLAで音程だけずらす */
 async function autotune(chs, sr, opt, prog, cancel){
   const N=chs[0].length;
@@ -874,14 +948,14 @@ function draw(){
       const isSel=c===sel;
       g.fillStyle=t.color+(on?(isSel?'55':'30'):'12'); g.fillRect(x0,y+3,x1-x0,LH-7);
       g.fillStyle=t.color+(on?'cc':'40'); g.fillRect(x0,y+3,Math.max(1,Math.min(2,x1-x0)),LH-7);
-      const pk=srcPeaks(t,c.src); g.fillStyle=t.color+(on?'ee':'55');
+      const pk=srcPeaks(t,c.src), cg=clipGain(t,c); g.fillStyle=t.color+(on?'ee':'55');
       const mid=y+(LH-4)/2, amp=(LH-14)/2;
       const px0=Math.max(0,Math.floor(x0)), px1=Math.min(cw,Math.ceil(x1));
       for(let px=px0;px<px1;px++){
         const sa=c.inOff+((vs+px/pps)-c.pos)*sr, sb=sa+sr/pps;
         let a=Math.max(Math.floor(c.inOff/PEAK),Math.floor(sa/PEAK)), e=Math.min(pk.length,Math.ceil((c.inOff+c.len)/PEAK),Math.ceil(sb/PEAK));
         let m=0; for(let j=a;j<e;j++) if(pk[j]>m) m=pk[j];
-        const h=Math.max(0.5,Math.min(1,Math.sqrt(m))*amp); g.fillRect(px,mid-h,1,h*2);
+        const h=Math.max(0.5,Math.min(1,Math.sqrt(m*cg))*amp); g.fillRect(px,mid-h,1,h*2);
       }
       if(isSel){ g.strokeStyle='#fff'; g.lineWidth=2; g.strokeRect(x0+1,y+3,x1-x0-2,LH-7);
         g.fillStyle='#fff'; [x0,x1].forEach(xx=>{ g.fillRect(xx-3,y+LH/2-12,6,20); }); }
@@ -1014,7 +1088,7 @@ $('#fileIn').onchange=async e=>{
     const n=Math.min(2,b.numberOfChannels), raw=[]; for(let k=0;k<n;k++) raw.push(b.getChannelData(k).slice());
     if(playing) pause();
     pushUndo('音源追加');
-    const t=tracks[i]; const src=newSource(raw);
+    const t=tracks[i]; const src=newSource(raw,false);
     const at = t.clips.length ? state.playhead : (state.playhead>0?state.playhead:0);
     carve(t,at,at+b.duration); const c={id:uid(),src,pos:at,inOff:0,len:raw[0].length}; t.clips.push(c); sel=c;
     if(!t.clips.some(x=>x!==c) && t.name===DEFAULT_NAMES[i]) t.name=f.name.replace(/\.[^.]+$/,'').slice(0,20);
@@ -1097,8 +1171,8 @@ $('#gridZero').onclick=()=>{ proj.gridOff=0; syncBpmUI(); saveProj(); draw(); };
 
 /* トラック */
 function openTrack(i){
-  cur=i; const t=tracks[i];
-  $('#tsDot').style.background=t.color; $('#tsName').value=t.name; $('#tsVol').value=t.vol; $('#tsPan').value=t.pan;
+  cur=i; $('#detectNote').textContent = proj.key ? '検出済み：'+KEYS[proj.key.key]+(proj.key.scale==='major'?' メジャー':' マイナー') : ''; const t=tracks[i];
+  $('#tsDot').style.background=t.color; $('#tsName').value=t.name; $('#tsVol').value=t.vol; $('#tsPan').value=t.pan; $('#tsGain').value=t.recGain;
   $('#eqHp').checked=t.eq.hp; $('#eqLow').value=t.eq.low; $('#eqMid').value=t.eq.mid; $('#eqMidF').value=t.eq.midF; $('#eqHigh').value=t.eq.high;
   $('#atOn').checked=t.at.on; $('#atKey').value=t.at.key; $('#atScale').value=t.at.scale; $('#atSpeed').value=t.at.speed; $('#atAmt').value=t.at.amt;
   $('#atProg').style.display=t.busy?'block':'none'; updTrackLabels(); updAtUI(); openSheet('#trackSheet');
@@ -1106,6 +1180,7 @@ function openTrack(i){
 function updTrackLabels(){
   if(cur<0) return; const t=tracks[cur];
   $('#tsVolV').textContent=(t.vol>0?(20*Math.log10(t.vol)).toFixed(1):'-∞')+'dB';
+  $('#tsGainV').textContent='+'+t.recGain+'dB';
   $('#tsPanV').textContent=Math.abs(t.pan)<0.02?'C':(t.pan<0?'L':'R')+Math.round(Math.abs(t.pan)*100);
   const db=v=>(v>0?'+':'')+v+'dB'; $('#eqLowV').textContent=db(t.eq.low); $('#eqMidV').textContent=db(t.eq.mid); $('#eqHighV').textContent=db(t.eq.high);
   const f=midFreq(t.eq.midF); $('#eqMidFV').textContent=f>=1000?(f/1000).toFixed(1)+'k':f;
@@ -1114,7 +1189,8 @@ function updTrackLabels(){
 function updAtUI(){ if(cur<0) return; const t=tracks[cur]; $('#atNote').textContent=t.busy?'処理中…（数秒〜数十秒）':'録音したあとに音程を補正します（設定を変えると自動でかけ直し）。左に振るほどケロケロ、右ほど自然。'; }
 const bind=(sel_,fn,ev='input')=>$(sel_).addEventListener(ev,e=>{ if(cur<0) return; fn(tracks[cur],e.target); updTrackLabels(); if(tracks[cur].node) applyParams(tracks[cur].node,tracks[cur]); saveProj(); });
 bind('#tsName',(t,el)=>{ t.name=el.value||DEFAULT_NAMES[cur]; updHeads(); setUI(); });
-bind('#tsVol',(t,el)=>t.vol=+el.value); bind('#tsPan',(t,el)=>t.pan=+el.value);
+bind('#tsVol',(t,el)=>t.vol=+el.value); bind('#tsGain',(t,el)=>{ t.recGain=+el.value; draw(); });
+$('#tsGain').addEventListener('change',()=>{ if(playing&&!recording) startPlayback(curPos(),ctx.currentTime+0.03); }); bind('#tsPan',(t,el)=>t.pan=+el.value);
 bind('#eqHp',(t,el)=>t.eq.hp=el.checked,'change'); bind('#eqLow',(t,el)=>t.eq.low=+el.value); bind('#eqMid',(t,el)=>t.eq.mid=+el.value); bind('#eqMidF',(t,el)=>t.eq.midF=+el.value); bind('#eqHigh',(t,el)=>t.eq.high=+el.value);
 const EQP={ flat:{hp:false,low:0,mid:0,midF:0.5,high:0}, vocal:{hp:true,low:-2,mid:-2,midF:0.3,high:4}, clear:{hp:true,low:-3,mid:-4,midF:0.25,high:2}, warm:{hp:true,low:3,mid:-1,midF:0.6,high:-2}, radio:{hp:true,low:-12,mid:6,midF:0.55,high:-12} };
 document.querySelectorAll('[data-eqp]').forEach(b=>b.onclick=()=>{ if(cur<0) return; const t=tracks[cur]; Object.assign(t.eq,EQP[b.dataset.eqp]); openTrack(cur); applyParams(t.node,t); saveProj(); updHeads(); });
