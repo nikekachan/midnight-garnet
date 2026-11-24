@@ -834,6 +834,7 @@ function card(t) {
 function viewWorks() {
   const albums = S.projects.filter(p => p.type === 'album').sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const singles = S.projects.filter(p => p.type === 'song' && !p.parentId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const videos = S.projects.filter(p => p.type === 'video').sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return `
   <h2 class="page-title">作品</h2>
   <div class="segtabs three">${[['making', '制作中'], ['disco', 'ディスコグラフィ'], ['sync', '歌詞同期']].map(([k, l]) =>
@@ -842,10 +843,12 @@ function viewWorks() {
   <div class="works-actions">
     <button class="btn ghost sm" data-act="form" data-form="song">＋ 曲を作る</button>
     <button class="btn ghost sm" data-act="form" data-form="album">＋ アルバムを作る</button>
+    <button class="btn ghost sm" data-act="form" data-form="video">＋ 動画を作る</button>
   </div>
   ${albums.length ? `<h3 class="sec">アルバム</h3>${albums.map(albumCard).join('')}` : ''}
   ${singles.length ? `<h3 class="sec">曲（シングル）</h3>${singles.map(songCard).join('')}` : ''}
-  ${!albums.length && !singles.length ? '<p class="empty-msg">まだ作品がありません。<br>「曲を作る」から、作曲 → 作詞 → レコーディング… の順番でタスクを作れます。</p>' : ''}`}`;
+  ${videos.length ? `<h3 class="sec">🎬 動画</h3>${videos.map(songCard).join('')}` : ''}
+  ${!albums.length && !singles.length && !videos.length ? '<p class="empty-msg">まだ作品がありません。<br>「曲を作る」から、作曲 → 作詞 → レコーディング… の順番でタスクを作れます。</p>' : ''}`}`;
 }
 
 // ---------- ディスコグラフィ ----------
@@ -950,7 +953,7 @@ function songCard(p) {
   const steps = stepsOf(p.id);
   const pr = progressOf(steps);
   return `<button class="pcard" data-act="proj" data-id="${esc(p.id)}">
-    <div class="kind">SONG</div>
+    <div class="kind">${p.type === 'video' ? 'VIDEO' : 'SONG'}</div>
     <div class="pname">${esc(p.name)}</div>
     <div class="pmeta"><span>${pr.total}ステップ中 ${pr.done} 完了</span><b>${pr.pct}%</b></div>
     ${diamonds(steps)}
@@ -1083,14 +1086,14 @@ function renderProj() {
     body.innerHTML = `<div class="d-inner">
       ${album ? `<div class="crumb">💿 <button data-act="proj" data-id="${esc(album.id)}">${esc(album.name)}</button> › ♪ ${esc(p.name)}</div>` : ''}
       <div class="p-summary">
-        <div class="kind">SONG</div>
+        <div class="kind">${p.type === 'video' ? 'VIDEO' : 'SONG'}</div>
         <div class="pname">${esc(p.name)}</div>
         ${(() => { const c = subOf(lastDone(p.id, 'composition')); return c ? `<div class="pmeta" style="margin-bottom:6px"><span>仮タイトル「${esc(c.tempTitle)}」${c.taste ? '・' + esc(c.taste) : ''}</span></div>` : ''; })()}
         <div class="pct"><b>${pr.pct}</b>%</div>
         <div class="bar lg"><i style="width:${pr.pct}%"></i></div>
         <div class="cur">${currentLine(steps)}</div>
       </div>
-      ${isSongComplete(p.id) ? creditsHtml(p.id) : ''}
+      ${p.type === 'song' && isSongComplete(p.id) ? creditsHtml(p.id) : ''}
       <h3 class="sec">ステップ（上から順番に進みます）</h3>
       ${steps.length ? stepTimeline(steps) : '<p class="empty-msg">ステップがまだありません</p>'}
       ${(() => { const c = lastDone(p.id, 'composition'); return c ? `<h3 class="sec">作曲シート</h3>${compSheetHtml(subOf(c), c.deliverableUrl)}` : ''; })()}
@@ -1125,7 +1128,7 @@ function pchatMsgsHtml(pid) {
   }).join('');
 }
 function pchatBlock(p) {
-  return `<h3 class="sec">💬 ${p.type === 'album' ? 'アルバム' : 'この曲'}のチャット</h3>
+  return `<h3 class="sec">💬 ${p.type === 'album' ? 'アルバム' : p.type === 'video' ? 'この動画' : 'この曲'}のチャット</h3>
     <p class="hint" style="margin:-4px 2px 8px">各ステップでのやりとりと、進捗・完了の報告もここにまとまります。</p>
     <div class="msgs pchat" id="pChat">${pchatMsgsHtml(p.id)}</div>
     <form data-form="projChat" data-project="${esc(p.id)}" class="reply-form composer-lite pchat-form">
@@ -1490,6 +1493,8 @@ const projectOptions = selected => {
   });
   S.projects.filter(p => p.type === 'song' && !p.parentId).forEach(s =>
     opts.push(`<option value="${esc(s.id)}" ${s.id === selected ? 'selected' : ''}>♪ ${esc(s.name)}</option>`));
+  S.projects.filter(p => p.type === 'video').forEach(s =>
+    opts.push(`<option value="${esc(s.id)}" ${s.id === selected ? 'selected' : ''}>🎬 ${esc(s.name)}</option>`));
   return opts.join('');
 };
 
@@ -1521,13 +1526,13 @@ const FORMS = {
     const steps = p ? stepsOf(p.id) : [];
     const last = steps.length ? steps[steps.length - 1].deadline : '';
     const def = last && last >= today() ? addDays(last, 7) : (S.view === 'calendar' && S.day >= today() ? S.day : addDays(today(), 7));
-    const title = p ? (p.type === 'song' ? `「${esc(p.name)}」にステップを追加` : `「${esc(p.name)}」に全体タスクを追加`) : 'タスクを追加';
+    const title = p ? (p.type !== 'album' ? `「${esc(p.name)}」にステップを追加` : `「${esc(p.name)}」に全体タスクを追加`) : 'タスクを追加';
     return `<form data-form="task">${sheetHead(title)}
       <label>題名<input name="title" maxlength="80" required placeholder="${p ? '例：マスタリング' : '例：歌詞のメモをまとめる'}"></label>
       <label>内容<textarea name="content" rows="3" maxlength="2000" placeholder="やること・参考URL・注意点など"></textarea></label>
       <div class="field">担当（複数選べます）${memberSeg('assignee', [S.me.id])}</div>
       <label>納期（この日までに完成）<input type="date" name="deadline" required value="${def}"></label>
-      <label>曲・アルバム<select name="projectId">${projectOptions(p ? p.id : '')}</select></label>
+      <label>曲・アルバム・動画<select name="projectId">${projectOptions(p ? p.id : '')}</select></label>
       <label>提出物の種類${kindSelect('', '', 'kind')}</label>
       ${p ? '<p class="hint" style="margin-top:-6px">いちばん最後のステップとして追加されます。順番はあとから▲▼で変えられます。</p>' : ''}
       <button class="btn gem" type="submit">追加して3人に通知</button>
@@ -1548,6 +1553,17 @@ const FORMS = {
       <button class="btn gem" type="submit">曲を作って3人に通知</button>
     </form>`;
   },
+  video() {
+    const me = S.me.id, all = S.members.map(m => m.id);
+    const tpl = [['撮影', all], ['編集', [me]], ['投稿', [me]]];
+    return `<form data-form="video">${sheetHead('動画を作る')}
+      <label>動画名<input name="name" maxlength="60" required placeholder="例：ストップウォッチ 1"></label>
+      <div class="field" style="margin-bottom:8px">ステップ（上から順番に進みます。名前・担当・納期は自由に変えられます。曲と同じように、各ステップで進捗・完了を報告します）</div>
+      <div id="stepRows">${tpl.map(([t, a], i) => stepRow(i + 1, t, a, addDays(today(), 3 * (i + 1)), '')).join('')}</div>
+      <button type="button" class="add-row" data-act="addRow">＋ ステップを追加</button>
+      <button class="btn gem" type="submit">動画を作って3人に通知</button>
+    </form>`;
+  },
   album() {
     return `<form data-form="album">${sheetHead('アルバムを作る')}
       <label>アルバム名<input name="name" maxlength="60" required placeholder="例：1st Album（仮）"></label>
@@ -1558,7 +1574,7 @@ const FORMS = {
   rename(_, opts = {}) {
     const p = proj(opts.project);
     return `<form data-form="rename" data-project="${esc(p.id)}">${sheetHead('名前を変更')}
-      <label>${p.type === 'album' ? 'アルバム名' : '曲名'}<input name="name" maxlength="60" required value="${esc(p.name)}"></label>
+      <label>${p.type === 'album' ? 'アルバム名' : p.type === 'video' ? '動画名' : '曲名'}<input name="name" maxlength="60" required value="${esc(p.name)}"></label>
       <button class="btn gem" type="submit">保存する</button>
     </form>`;
   },
@@ -1987,17 +2003,17 @@ async function handleForm(kind, f, btn) {
       toast(r.task.projectId ? 'ステップを追加しました' : 'タスクを追加しました');
       return;
     }
-    if (kind === 'song') {
+    if (kind === 'song' || kind === 'video') {
       const steps = $$('[data-row]', f).map(row => ({
         title: $('.st-title', row).value,
         assignee: $$('input[type=checkbox]:checked', row).map(c => c.value),
         deadline: $('.st-date', row).value,
         kind: $('.st-kind', row).value,
       }));
-      const r = await api('createProject', { type: 'song', name: v('name'), parentId: v('parentId'), steps });
+      const r = await api('createProject', kind === 'video' ? { type: 'video', name: v('name'), steps } : { type: 'song', name: v('name'), parentId: v('parentId'), steps });
       applyBoot(r); closeSheet(); render();
       openProj(r.projectId, !$('#proj').hidden);
-      toast('曲を作りました 🎵');
+      toast(kind === 'video' ? '動画を作りました 🎬' : '曲を作りました 🎵');
       return;
     }
     if (kind === 'album') {
@@ -3036,7 +3052,7 @@ function renderAdmin() {
       `<button class="mini" data-act="open" data-id="${esc(t.id)}">開く</button>${delBtn('task', t.id, t.title)}`)).join('');
   } else if (S.adminTab === 'works') {
     body = S.projects.length ? S.projects.slice().sort((a, b) => a.type.localeCompare(b.type)).map(p => admRow(
-      `${p.type === 'album' ? '💿' : '♪'} ${esc(p.name)}`,
+      `${p.type === 'album' ? '💿' : p.type === 'video' ? '🎬' : '♪'} ${esc(p.name)}`,
       `${p.type === 'album' ? `アルバム・${songsOf(p.id).length}曲` : `${p.parentId && proj(p.parentId) ? esc(proj(p.parentId).name) + ' の曲・' : ''}${stepsOf(p.id).length}ステップ`}`,
       `<button class="mini" data-act="form" data-form="rename" data-project="${esc(p.id)}">名前</button>${delBtn('project', p.id, p.name)}`)).join('') : '<p class="empty-msg">作品はありません</p>';
   } else if (S.adminTab === 'events') {
@@ -3405,7 +3421,7 @@ document.addEventListener('submit', e => {
   if ((f.dataset.form === 'task' || f.dataset.form === 'edit') && !f.querySelector('input[name=assignee]:checked')) {
     return toast('担当者を1人以上選んでください', 'err');
   }
-  if (f.dataset.form === 'song' && $$('[data-row]', f).some(r => !$$('input[type=checkbox]:checked', r).length)) {
+  if ((f.dataset.form === 'song' || f.dataset.form === 'video') && $$('[data-row]', f).some(r => !$$('input[type=checkbox]:checked', r).length)) {
     return toast('どのステップにも担当者を1人以上選んでください', 'err');
   }
   handleForm(f.dataset.form, f, f.querySelector('button[type=submit]'));
@@ -3546,7 +3562,7 @@ const Mock = (() => {
     },
     createProject(r, m) {
       const nm = String(r.name || '').trim(); if (!nm) throw '名前を入力してください';
-      const p = { id: 'p' + (++seq), type: r.type === 'album' ? 'album' : 'song', name: nm, parentId: r.type === 'album' ? '' : (r.parentId || ''), createdBy: m.id, createdAt: now() };
+      const p = { id: 'p' + (++seq), type: r.type === 'album' || r.type === 'video' ? r.type : 'song', name: nm, parentId: r.type === 'song' ? (r.parentId || '') : '', createdBy: m.id, createdAt: now() };
       const st = (r.steps || []).map((s, i) => {
         const title = String(s.title || '').trim(); if (!title) throw `${i + 1}番目のステップの題名を入力してください`;
         return { title, assignee: norm(s.assignee), deadline: date(s.deadline), kind: s.kind || '' };
