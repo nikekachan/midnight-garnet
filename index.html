@@ -20,37 +20,6 @@
 <body>
 <div id="bg"></div>
 
-<!-- 起動時のロゴアニメーション（Motionで動かす。動かせない環境ではすぐ消える） -->
-<div id="splash" aria-hidden="true">
-  <div class="sp-stage">
-    <svg class="sp-svg" viewBox="0 0 128 128">
-      <defs>
-        <filter id="spGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2" result="b"/>
-          <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-      </defs>
-      <!-- うっすら残る軌跡 -->
-      <path class="sp-trail" d="M106.4 44.5 L73.8 44.5 L89.5 25.5 L34 25.5"/>
-      <path class="sp-trail" d="M48 52.5 L91.5 52.5 L57.3 94.3 L17.6 45.9 L30.4 30.5 L82 30.5"/>
-      <path class="sp-trail" d="M61 104 L106.4 44.5"/>
-      <!-- 走る光（彗星） -->
-      <path class="sp-comet glow" d="M61 104 L106.4 44.5 L73.8 44.5 L89.5 25.5 L34 25.5"/>
-      <path class="sp-comet glow" d="M48 52.5 L91.5 52.5 L57.3 94.3 L17.6 45.9 L30.4 30.5 L82 30.5"/>
-      <path class="sp-comet" d="M61 104 L106.4 44.5 L73.8 44.5 L89.5 25.5 L34 25.5"/>
-      <path class="sp-comet" d="M48 52.5 L91.5 52.5 L57.3 94.3 L17.6 45.9 L30.4 30.5 L82 30.5"/>
-    </svg>
-    <img class="sp-logo" src="icons/icon-512.png?v=2" alt="">
-    <i class="sp-flash"></i>
-  </div>
-  <!-- メンバー名：逆三角形（左上けんぼー・右上みつ・下かつにい） -->
-  <div class="sp-names">
-    <span class="sp-name" data-alt="l0-fer" style="--c:#3DDC84;--x:-34%;--y:-40%">けんぼー</span>
-    <span class="sp-name" data-alt="mitudess" style="--c:#FF4D5E;--x:34%;--y:-40%">みつ</span>
-    <span class="sp-name" data-alt="Katsunii" style="--c:#4DA3FF;--x:0%;--y:46%">かつにい</span>
-  </div>
-  <svg class="sp-bolts" aria-hidden="true"></svg>
-</div>
 
 <!-- ログイン -->
 <section id="login" hidden>
@@ -159,7 +128,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/motion@14.0.0/dist/motion.js"></script>
 <script src="config.js?v=3"></script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js" defer></script>
